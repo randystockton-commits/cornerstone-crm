@@ -322,25 +322,53 @@ var CURRENT_SESSION = null;
 var DB = null; // kept for compat — IndexedDB not used in Sheets mode
 
 // ── API CALL ───────────────────────────────────────────────────────────────
+var _jsonpCallbacks = {};
+var _jsonpCounter   = 0;
+
 function sheetsAPI(action, data, cb) {
   if (!SHEETS_URL || SHEETS_URL === 'PASTE_YOUR_WEB_APP_URL_HERE') {
-    // Offline mode — handle locally
     handleOffline(action, data, cb);
     return;
   }
+
   var body = Object.assign({action: action}, data);
   if (CURRENT_SESSION) body.callerUsername = CURRENT_SESSION.username;
-  fetch(SHEETS_URL, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(body)
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(d){ if (cb) cb(d); })
-  .catch(function(e){
-    console.error('Sheets API error:', e);
-    if (cb) cb({ok: false, error: e.message});
-  });
+
+  // Use no-cors fetch with GET + params to avoid CORS preflight
+  var cbName = '_jsonpCb' + (++_jsonpCounter);
+  var params  = '?callback=' + cbName + '&payload=' + encodeURIComponent(JSON.stringify(body));
+
+  _jsonpCallbacks[cbName] = function(d) {
+    delete _jsonpCallbacks[cbName];
+    var s = document.getElementById(cbName);
+    if (s) s.remove();
+    if (cb) cb(d);
+  };
+  window[cbName] = _jsonpCallbacks[cbName];
+
+  var script = document.createElement('script');
+  script.id  = cbName;
+  script.src = SHEETS_URL + params;
+  script.onerror = function() {
+    delete _jsonpCallbacks[cbName];
+    window[cbName] = null;
+    script.remove();
+    console.warn('JSONP failed, falling back to offline mode');
+    handleOffline(action, data, cb);
+  };
+  document.head.appendChild(script);
+
+  // Timeout fallback after 10 seconds
+  setTimeout(function() {
+    if (_jsonpCallbacks[cbName]) {
+      console.warn('JSONP timeout, falling back to offline');
+      delete _jsonpCallbacks[cbName];
+      window[cbName] = null;
+      var s = document.getElementById(cbName);
+      if (s) s.remove();
+      handleOffline(action, data, cb);
+    }
+  }, 10000);
 }
 
 // ── OFFLINE / LOCAL HANDLER ────────────────────────────────────────────────
