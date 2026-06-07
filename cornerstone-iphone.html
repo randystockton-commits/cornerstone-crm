@@ -1030,6 +1030,16 @@ function renderContactDetail(c, log) {
   editBtn.addEventListener('click', function(){ openEditContact(_detailContact.name); });
   hero.appendChild(editBtn);
 
+  // Primary Contact toggle
+  var isPrimary = c.isPrimary === 'TRUE' || c.isPrimary === true;
+  var primaryBtn = document.createElement('button');
+  primaryBtn.className = 'btn';
+  primaryBtn.id = 'primary-toggle-btn';
+  primaryBtn.style.cssText = 'width:100%;margin-top:8px;' + (isPrimary ? 'background:#fef3c7;border-color:#f59e0b;color:#b45309;font-weight:700' : '');
+  primaryBtn.textContent = isPrimary ? '⭐ Primary Contact' : '☆ Set as Primary Contact';
+  primaryBtn.addEventListener('click', function(){ togglePrimaryContact(_detailContact); });
+  hero.appendChild(primaryBtn);
+
   // Delete Contact button
   var delBtn = document.createElement('button');
   delBtn.className = 'btn';
@@ -1711,8 +1721,9 @@ function openCompanyContacts(companyName) {
       var row = document.createElement('div');
       row.className = 'list-item';
       row.style.cursor = 'pointer';
+      var isPri = c.isPrimary === 'TRUE' || c.isPrimary === true;
       row.innerHTML = '<div class="avatar avatar-sm" style="background:'+(c.bg||'#f3f4f6')+';color:'+(c.fg||'#374151')+'">'+(c.initials||'?')+'</div>'
-        + '<div class="item-main"><div class="item-name">'+c.name+'</div><div class="item-sub">'+(c.title||'')+'</div></div>'
+        + '<div class="item-main"><div class="item-name">'+c.name+(isPri?' ⭐':'')+'</div><div class="item-sub">'+(c.title||'')+'</div></div>'
         + '<span style="font-size:20px;color:#d1d5db">›</span>';
       // Tap name to view, long-press or swipe button to delete
       row.addEventListener('click', function(){
@@ -2120,6 +2131,49 @@ function confirmDeleteCompany(companyName) {
   renderPipeline();
   updateDashboardMetrics();
   showToast(companyName + ' deleted');
+}
+
+
+function togglePrimaryContact(c) {
+  if (!c || !c.company) {
+    showToast('Contact needs a company first');
+    return;
+  }
+  var isPrimary = c.isPrimary === 'TRUE' || c.isPrimary === true;
+
+  if (isPrimary) {
+    // Remove primary
+    c.isPrimary = 'FALSE';
+    sheetsAPI('saveContact', {contact: c}, function(){});
+    var idx = CONTACTS.findIndex(function(x){ return x.name===c.name; });
+    if (idx>=0) CONTACTS[idx].isPrimary = 'FALSE';
+    showToast('Removed as primary contact');
+  } else {
+    // Set as primary — first unset any existing primary for this company
+    CONTACTS.forEach(function(x) {
+      if ((x.company||'').toLowerCase() === (c.company||'').toLowerCase() && x.name !== c.name) {
+        if (x.isPrimary === 'TRUE' || x.isPrimary === true) {
+          x.isPrimary = 'FALSE';
+          sheetsAPI('saveContact', {contact: x}, function(){});
+        }
+      }
+    });
+    // Set this one as primary
+    c.isPrimary = 'TRUE';
+    sheetsAPI('saveContact', {contact: c}, function(){});
+    var idx = CONTACTS.findIndex(function(x){ return x.name===c.name; });
+    if (idx>=0) CONTACTS[idx].isPrimary = 'TRUE';
+    if (CONTACTS_MAP[c.name.toLowerCase()]) CONTACTS_MAP[c.name.toLowerCase()].isPrimary = 'TRUE';
+    showToast('⭐ ' + c.name + ' set as primary contact');
+  }
+
+  // Update button immediately
+  var btn = document.getElementById('primary-toggle-btn');
+  var nowPrimary = c.isPrimary === 'TRUE';
+  if (btn) {
+    btn.textContent = nowPrimary ? '⭐ Primary Contact' : '☆ Set as Primary Contact';
+    btn.style.cssText = 'width:100%;margin-top:8px;' + (nowPrimary ? 'background:#fef3c7;border-color:#f59e0b;color:#b45309;font-weight:700' : '');
+  }
 }
 
 // Init calendar
