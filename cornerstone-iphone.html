@@ -4671,5 +4671,255 @@ document.addEventListener('DOMContentLoaded', function(){
 })();
 </script>
 
+
+
+<style>
+/* ── RANDY V19: CALENDAR/FOLLOW-UP CLEANUP + UNDO - easy to revert ── */
+.undo-banner{position:fixed;left:18px;right:18px;bottom:calc(84px + var(--safe-bottom));background:#111827;color:#fff;border-radius:14px;padding:12px 14px;z-index:9999;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);font-size:13px;font-weight:700;transform:translateY(110px);opacity:0;transition:all .2s ease}
+.undo-banner.show{transform:translateY(0);opacity:1}
+.undo-banner button{border:none;background:#fff;color:var(--blue);font-weight:900;border-radius:999px;padding:7px 12px;font-family:inherit;cursor:pointer}
+.cal-event .cal-event-time,.followup-row .item-sub{font-size:12px;color:var(--gray)}
+.cal-event .cal-event-title,.followup-row .item-name{font-weight:800}
+.cal-event.completed{display:none!important}
+.v19-swipe-row{touch-action:pan-y;position:relative;overflow:hidden}
+.v19-swipe-row.v19-right{background:#eff6ff!important;transform:translateX(7px);transition:transform .14s,background .14s}
+.v19-swipe-row.v19-left{background:#f0fdf4!important;transform:translateX(-7px);transition:transform .14s,background .14s}
+</style>
+<script>
+// ── RANDY V19: fixes 1899 time display, adds undo for complete, and fixes Follow-Up left swipe account open.
+(function(){
+  function txt(v){ return String(v == null ? '' : v).trim(); }
+  function norm(v){ return txt(v).toLowerCase().replace(/[^a-z0-9]/g,''); }
+  function haptic(){ try{ if (typeof hapticTap === 'function') hapticTap(); else if(navigator.vibrate) navigator.vibrate(8); }catch(e){} }
+  function toast(msg){ if (typeof showToast === 'function') showToast(msg); }
+  function esc(s){ return txt(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+
+  function getDateKey(v){
+    if (typeof calendarDateKey === 'function') return calendarDateKey(v);
+    var s = txt(v);
+    var m = s.match(/\d{4}-\d{2}-\d{2}/);
+    if (m) return m[0];
+    var d = new Date(s);
+    if (!isNaN(d)) return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    return s;
+  }
+  function todayKey(){ return typeof isoDate === 'function' ? isoDate(new Date()) : getDateKey(new Date()); }
+  function dayLabel(ev){
+    if (typeof eventDayLabel === 'function') return eventDayLabel(ev);
+    var key = getDateKey(ev && ev.date);
+    if (key === todayKey()) return 'Today';
+    var t = new Date(); t.setDate(t.getDate()+1);
+    var tk = t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+    if (key === tk) return 'Tomorrow';
+    var d = new Date(key+'T12:00:00');
+    var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return isNaN(d) ? 'Today' : mo[d.getMonth()]+' '+d.getDate();
+  }
+  function cleanTimeValue(v){
+    if (typeof sheetsTimeToMinutes === 'function' && typeof minutesToAgendaTime === 'function') {
+      var mins = sheetsTimeToMinutes(v);
+      if (mins !== null && mins !== undefined) return minutesToAgendaTime(mins);
+    }
+    var s = txt(v);
+    if (!s) return '';
+    var dt = new Date(s);
+    if (!isNaN(dt)) {
+      var hh = dt.getHours(), mm = dt.getMinutes();
+      var ap = hh >= 12 ? 'PM' : 'AM';
+      var h12 = hh % 12 || 12;
+      return h12 + ':' + String(mm).padStart(2,'0') + ' ' + ap;
+    }
+    var m = s.match(/^(\d{1,2}):(\d{2})/);
+    if (m) {
+      var h = Number(m[1]), mi = Number(m[2]);
+      var ap2 = h >= 12 ? 'PM' : 'AM';
+      var h122 = h % 12 || 12;
+      return h122 + ':' + String(mi).padStart(2,'0') + ' ' + ap2;
+    }
+    return s;
+  }
+  function eventTime(ev){
+    if (typeof cleanEventTime === 'function') return cleanEventTime(ev);
+    return cleanTimeValue(ev && (ev.start || ev.time));
+  }
+  function sortMinutes(ev){
+    if (typeof cleanEventSortMinutes === 'function') return cleanEventSortMinutes(ev);
+    var s = eventTime(ev);
+    var m = s.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    if (!m) return 9999;
+    var h = Number(m[1]) % 12; if (/PM/i.test(m[3])) h += 12;
+    return h*60 + Number(m[2]);
+  }
+  function typeLabel(type){
+    if (typeof cleanEventTypeLabel === 'function') return cleanEventTypeLabel(type);
+    return ({call:'Call',demo:'Demo',meeting:'Meeting',follow:'Follow-Up',deadline:'Deadline',appointment:'Appointment'}[type] || 'Appointment');
+  }
+  function companyFromEvent(ev){
+    if (typeof cleanEventCompanyName === 'function') return cleanEventCompanyName(ev);
+    var company = txt(ev && ev.company), contact = txt(ev && ev.contact), title = txt(ev && ev.title);
+    if (company) return company;
+    var m = title.match(/^\s*[^:\-]+\s*[:\-]\s*(.+)$/);
+    return m ? txt(m[1]) : (contact || title || 'Scheduled Activity');
+  }
+  function agendaTitle(ev){ return typeLabel(ev && ev.type) + ': ' + companyFromEvent(ev); }
+
+  function findContactByName(name){
+    var k = norm(name);
+    return (window.CONTACTS || []).find(function(c){ return norm(c.name) === k; }) || null;
+  }
+  function findAccountByName(name){
+    var k = norm(name);
+    if (!k) return null;
+    var companies = window.COMPANIES || [];
+    return companies.find(function(c){ return norm(c.name) === k; }) ||
+      companies.find(function(c){ var cn = norm(c.name); return cn && (cn.indexOf(k) >= 0 || k.indexOf(cn) >= 0); }) || null;
+  }
+  function openAssociatedAccount(ev){
+    haptic();
+    var candidates = [];
+    if (ev) {
+      candidates.push(ev.company);
+      candidates.push(companyFromEvent(ev));
+      var contact = findContactByName(ev.contact);
+      if (contact) candidates.push(contact.company);
+    }
+    for (var i=0;i<candidates.length;i++) {
+      var match = findAccountByName(candidates[i]);
+      if (match && typeof openAccountDetail === 'function') { openAccountDetail(match.name); return; }
+    }
+    if (ev && ev.contact && typeof openContactDetail === 'function') { openContactDetail(ev.contact); return; }
+    toast('No linked account found');
+  }
+  window.openFollowupAssociatedAccount = openAssociatedAccount;
+
+  function openEventEditor(id){ if (typeof openBookSheetForEvent === 'function') openBookSheetForEvent(id); }
+
+  function addV19Swipe(row, opts){
+    if (!row || row._v19SwipeBound) return;
+    row._v19SwipeBound = true;
+    row.classList.add('v19-swipe-row');
+    var sx=0, sy=0, moved=false, active=false;
+    function start(x,y){ sx=x; sy=y; moved=false; active=true; }
+    function end(x,y,ev){
+      if (!active) return;
+      active=false;
+      var dx=x-sx, dy=y-sy;
+      if (Math.abs(dx)>12 && Math.abs(dx)>Math.abs(dy)*1.2) moved=true;
+      if (Math.abs(dx)>58 && Math.abs(dx)>Math.abs(dy)*1.25) {
+        if (ev){ ev.preventDefault(); ev.stopPropagation(); }
+        var cls = dx>0 ? 'v19-right' : 'v19-left';
+        row.classList.add(cls); setTimeout(function(){ row.classList.remove(cls); },160);
+        haptic();
+        if (dx>0 && opts.right) opts.right();
+        if (dx<0 && opts.left) opts.left();
+      } else if (!moved && opts.tap) {
+        opts.tap();
+      }
+    }
+    row.addEventListener('touchstart',function(e){ if(e.touches&&e.touches[0]) start(e.touches[0].clientX,e.touches[0].clientY); },{passive:true});
+    row.addEventListener('touchend',function(e){ var t=e.changedTouches&&e.changedTouches[0]; if(t) end(t.clientX,t.clientY,e); },{passive:false});
+    row.addEventListener('mousedown',function(e){ start(e.clientX,e.clientY); });
+    row.addEventListener('mouseup',function(e){ end(e.clientX,e.clientY,e); });
+  }
+
+  var undoTimer = null;
+  function showUndo(ev){
+    var old = document.getElementById('undo-banner'); if (old) old.remove();
+    var b = document.createElement('div');
+    b.id = 'undo-banner'; b.className = 'undo-banner';
+    b.innerHTML = '<span>Event completed</span><button type="button">UNDO</button>';
+    document.body.appendChild(b);
+    setTimeout(function(){ b.classList.add('show'); },20);
+    b.querySelector('button').onclick = function(){
+      ev.completed = false;
+      ev.title = txt(ev.title).replace(/^✓\s*/, '');
+      if (typeof saveCalendarEventEverywhere === 'function') saveCalendarEventEverywhere(ev, function(){});
+      refreshViews();
+      b.classList.remove('show'); setTimeout(function(){ b.remove(); },180);
+      toast('Restored ✓');
+    };
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(function(){ if (b.parentNode) { b.classList.remove('show'); setTimeout(function(){ b.remove(); },180); } }, 10000);
+  }
+  function refreshViews(){
+    if (typeof calRender === 'function') calRender();
+    if (typeof renderFollowUpsToday === 'function') renderFollowUpsToday();
+    if (typeof updateTodayFocus === 'function') updateTodayFocus();
+    if (typeof updateNavBadges === 'function') updateNavBadges();
+  }
+  function completeEvent(id){
+    var ev = (window.CAL_EVENTS || []).find(function(e){ return String(e.id) === String(id); });
+    if (!ev) { toast('Event not found'); return; }
+    ev.completed = true;
+    if (txt(ev.title).indexOf('✓ ') !== 0) ev.title = '✓ ' + txt(ev.title);
+    if (typeof saveCalendarEventEverywhere === 'function') saveCalendarEventEverywhere(ev, function(){});
+    refreshViews();
+    showUndo(ev);
+  }
+
+  window.renderFollowUpsToday = function(){
+    var list = document.getElementById('followup-list');
+    var countEl = document.getElementById('followup-count');
+    if (!list) return;
+    var today = todayKey();
+    var events = (window.CAL_EVENTS || []).filter(function(e){ return e && !e.completed && getDateKey(e.date) === today; });
+    events.sort(function(a,b){ return sortMinutes(a)-sortMinutes(b); });
+    if (countEl){ countEl.textContent = events.length || ''; countEl.style.display = events.length ? 'inline-flex' : 'none'; }
+    if (!events.length){ list.innerHTML = '<div class="empty" style="padding:20px"><p>No calls or appointments scheduled for today</p></div>'; return; }
+    var iconMap = {call:'📞',follow:'⏰',demo:'🖥',meeting:'👥',deadline:'⚠️',appointment:'📅'};
+    var colorMap = {call:['#dcfce7','#15803d'],follow:['#fef3c7','#b45309'],demo:['#dbeafe','#1d4ed8'],meeting:['#ede9fe','#6d28d9'],deadline:['#fee2e2','#b91c1c'],appointment:['#f3f4f6','#6b7280']};
+    list.innerHTML = '';
+    events.forEach(function(ev){
+      var colors = colorMap[ev.type] || colorMap.appointment;
+      var row = document.createElement('div'); row.className = 'list-item followup-row'; row.style.cursor = 'pointer';
+      row.innerHTML = '<div class="avatar avatar-sm" style="background:'+colors[0]+';color:'+colors[1]+'">'+(iconMap[ev.type]||'📅')+'</div>'+
+        '<div class="item-main"><div class="item-name">'+esc(agendaTitle(ev))+'</div><div class="item-sub">'+esc(dayLabel(ev)+' • '+eventTime(ev))+'</div></div>'+
+        '<span style="font-style:normal;color:#d1d5db;font-size:18px">›</span>';
+      addV19Swipe(row,{ tap:function(){ openAssociatedAccount(ev); }, right:function(){ openEventEditor(ev.id); }, left:function(){ openAssociatedAccount(ev); }});
+      list.appendChild(row);
+    });
+  };
+
+  window.renderCalEvents = function(ds){
+    var label = document.getElementById('cal-selected-label');
+    var list = document.getElementById('cal-events-list');
+    if (!list) return;
+    var today = todayKey();
+    var events = ds ? (window.CAL_EVENTS||[]).filter(function(e){ return getDateKey(e.date) === ds; }) : (window.CAL_EVENTS||[]).filter(function(e){ return !e.completed && getDateKey(e.date) >= today; });
+    events = events.filter(function(e){ return !e.completed; }).sort(function(a,b){ return getDateKey(a.date).localeCompare(getDateKey(b.date)) || sortMinutes(a)-sortMinutes(b); });
+    if (!ds) events = events.slice(0,20);
+    if (label){
+      if (ds) {
+        var d = new Date(ds+'T12:00:00'); var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        label.textContent = isNaN(d) ? 'Events' : mo[d.getMonth()]+' '+d.getDate()+', '+d.getFullYear();
+      } else label.textContent = 'Upcoming Events';
+    }
+    if (!events.length){ list.innerHTML = '<div class="empty" style="padding:20px"><span style="font-style:normal;">📅</span><p>No events'+(ds?' this day':'')+' — tap + to book one</p></div>'; return; }
+    var typeColors = {call:'var(--green)',demo:'var(--blue)',meeting:'var(--purple)',follow:'var(--amber)',deadline:'var(--red)',appointment:'var(--gray)'};
+    list.innerHTML = '';
+    events.forEach(function(ev){
+      var col = typeColors[ev.type] || 'var(--gray)';
+      var row = document.createElement('div'); row.className = 'cal-event'; row.style.background = 'var(--gray-light)'; row.setAttribute('data-event-id', ev.id);
+      row.innerHTML = '<div class="cal-event-dot" style="background:'+col+'"></div>'+
+        '<div style="flex:1"><div class="cal-event-title">'+esc(agendaTitle(ev))+'</div><div class="cal-event-time">'+esc(dayLabel(ev)+' • '+eventTime(ev)+(ev.contact?' • '+ev.contact:''))+'</div></div>'+
+        '<span style="font-style:normal;color:#d1d5db;font-size:16px">›</span>';
+      row.addEventListener('click',function(){ openEventEditor(ev.id); });
+      addV19Swipe(row,{ tap:function(){ openEventEditor(ev.id); }, right:function(){ completeEvent(ev.id); }, left:function(){ openEventEditor(ev.id); }});
+      list.appendChild(row);
+    });
+  };
+
+  var oldUpdateBadges = window.updateNavBadges;
+  window.updateNavBadges = function(){
+    if (typeof oldUpdateBadges === 'function') oldUpdateBadges.apply(this, arguments);
+    var todayEvents = (window.CAL_EVENTS || []).filter(function(e){ return e && !e.completed && getDateKey(e.date) === todayKey(); }).length;
+    var calBadge = document.getElementById('calendar-badge');
+    if (calBadge){ calBadge.textContent = todayEvents; calBadge.style.display = todayEvents ? 'block' : 'none'; }
+  };
+
+  setTimeout(refreshViews, 250);
+})();
+</script>
+
 </body>
 </html>
