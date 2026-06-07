@@ -258,6 +258,7 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
         <span style="font-size:12px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.08em">Pipeline Overview</span>
         <button onclick="refreshDashboard()" style="background:none;border:none;font-size:12px;color:var(--blue);cursor:pointer;padding:4px 8px;font-family:inherit;font-weight:600">↻ Refresh</button>
+        <button onclick="debugContacts()" style="background:none;border:none;font-size:11px;color:#dc2626;cursor:pointer;padding:4px 8px;font-family:inherit">🔍 Debug</button>
 
       </div>
       <div class="metrics-grid">
@@ -530,16 +531,8 @@ var LOCAL_USERS = [
 
 // ── API ─────────────────────────────────────────────────────────────
 function tryFetch(action, data, cb) {
-  var body = Object.assign({action: action}, data);
-  if (CURRENT_SESSION) body.callerUsername = CURRENT_SESSION.username;
-  fetch(SHEETS_URL, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(body)
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(d){ if (cb) cb(d); })
-  .catch(function() { handleOffline(action, data, cb); });
+  // Fall straight to offline - fetch() blocked on file:// URLs
+  handleOffline(action, data, cb);
 }
 
 function setSyncStatus(msg, color) { /* removed */ }
@@ -564,7 +557,7 @@ function sheetsAPI(action, data, cb) {
     // Try fetch as fallback before going offline
     tryFetch(action, data, cb);
   };
-  setTimeout(function(){ if(window[cbName]){ delete window[cbName]; var el=document.getElementById(cbName); if(el)el.remove(); handleOffline(action,data,cb); } }, 8000);
+  setTimeout(function(){ if(window[cbName]){ delete window[cbName]; var el=document.getElementById(cbName); if(el)el.remove(); handleOffline(action,data,cb); } }, 3000);
   document.head.appendChild(s);
 }
 
@@ -821,7 +814,25 @@ function loadFromSheets(cb) {
     console.log('getActivity response:', JSON.stringify(data).substr(0,200));
     if (data && data.ok && data.activity && data.activity.length) {
       ALL_ACTIVITY = data.activity;
-      updateDashboardMetrics(); // refresh activity feed immediately
+      // Auto-create stub contacts for anyone in activity not in CONTACTS
+      ALL_ACTIVITY.forEach(function(e) {
+        if (!e.contact) return;
+        var key = e.contact.toLowerCase().trim();
+        if (!CONTACTS_MAP[key] && !CONTACTS.find(function(c){ return (c.name||'').toLowerCase().trim()===key; })) {
+          var ini = e.contact.split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().substr(0,2);
+          var colors = [['#dbeafe','#1d4ed8'],['#dcfce7','#15803d'],['#ede9fe','#6d28d9'],['#fef3c7','#b45309']];
+          var col = colors[CONTACTS.length % colors.length];
+          var stub = {
+            name: e.contact, nameLower: key,
+            company: e.company || '', initials: ini,
+            bg: col[0], fg: col[1],
+            _fromActivity: true
+          };
+          CONTACTS.push(stub);
+          CONTACTS_MAP[key] = stub;
+        }
+      });
+      updateDashboardMetrics();
       check(true);
     } else { check(false); }
   });
@@ -936,11 +947,26 @@ function openContactDetail(name) {
   var cNow = getContact() || c;
   renderContactDetail(cNow, []);
 
-  // Then load activity and re-render with full data
+  // Load activity then re-render with full contact data
   sheetsAPI('getActivity', {contact: nameTrimmed}, function(data) {
     var log = (data && data.ok) ? (data.activity||[]) : _offlineActivity.filter(function(e){return e.contact===nameTrimmed;});
-    // Re-lookup contact - CONTACTS should be loaded by now
-    renderContactDetail(getContact() || c, log);
+    var cFresh = getContact();
+
+    // If still not found, build a contact from activity data
+    if (!cFresh && log.length) {
+      var firstEntry = log[0];
+      var ini = nameTrimmed.split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().substr(0,2);
+      cFresh = {
+        name:    nameTrimmed,
+        initials: ini,
+        bg:      '#dbeafe',
+        fg:      '#1d4ed8',
+        company: firstEntry.company || '',
+        _fromActivity: true
+      };
+    }
+
+    renderContactDetail(cFresh || c, log);
   });
 }
 
@@ -1004,6 +1030,14 @@ function renderContactDetail(c, log) {
   editBtn.addEventListener('click', function(){ openEditContact(_detailContact.name); });
   hero.appendChild(editBtn);
 
+  // Delete Contact button
+  var delBtn = document.createElement('button');
+  delBtn.className = 'btn';
+  delBtn.style.cssText = 'width:100%;margin-top:8px;color:var(--red);border-color:#fca5a5';
+  delBtn.textContent = '🗑 Delete Contact';
+  delBtn.addEventListener('click', function(){ confirmDeleteContact(_detailContact); });
+  hero.appendChild(delBtn);
+
   root.appendChild(hero);
 
   // ── Contact Info card ────────────────────────────────────────────
@@ -1043,12 +1077,42 @@ function renderContactDetail(c, log) {
   if (cityState) addrParts.push(cityState + (c.zip ? ' ' + c.zip : ''));
   if (addrParts.length) addInfoRow('Address', addrParts.join(', '));
 
-  // If NO fields showed, display all non-empty keys as fallback
+  // If NO fields showed, show debug info
   if (!infoBody.children.length) {
+    // Try to show all non-empty fields anyway
     var skip = {name:1,nameLower:1,initials:1,bg:1,fg:1,notesLog:1,createdAt:1,updatedAt:1,updatedBy:1,id:1};
     Object.keys(c).forEach(function(k){
       if (!skip[k] && c[k] && String(c[k]).trim()) addInfoRow(k, c[k]);
     });
+    // If still nothing - contact not in sheet
+    if (!infoBody.children.length) {
+      if (c._fromActivity) {
+        // Show add contact prompt
+        var addRow = document.createElement('div');
+        addRow.style.cssText = 'padding:14px 16px;text-align:center';
+        addRow.innerHTML = '<div style="font-size:13px;color:var(--gray);margin-bottom:10px">This person is in your activity log but not yet added as a contact.</div>';
+        var addBtn = document.createElement('button');
+        addBtn.className = 'btn btn-primary btn-block';
+        addBtn.textContent = '+ Add ' + c.name + ' as Contact';
+        addBtn.addEventListener('click', function(){
+          document.getElementById('ac-name').value    = c.name;
+          document.getElementById('ac-company').value = c.company || '';
+          var titleEl = document.querySelector('#add-contact-sheet .sheet-title');
+          if (titleEl) titleEl.textContent = 'Add Contact';
+          openSheet('add-contact-sheet');
+        });
+        addRow.appendChild(addBtn);
+        infoBody.appendChild(addRow);
+        return;
+      }
+      var dbgRow = document.createElement('div');
+      dbgRow.style.cssText = 'padding:10px 16px;background:#fef3c7;border-radius:8px;margin:8px';
+      dbgRow.innerHTML = '<div style="font-size:12px;font-weight:700;color:#b45309;margin-bottom:4px">⚠ Contact not matched</div>'
+        + '<div style="font-size:11px;color:#92400e">Searching for: "' + c.name + '"<br>'
+        + 'CONTACTS loaded: ' + CONTACTS.length + '<br>'
+        + 'Keys on this object: ' + Object.keys(c).join(', ') + '</div>'
+      infoBody.appendChild(dbgRow);
+    }
   }
 
   // Company — tappable
@@ -1650,10 +1714,27 @@ function openCompanyContacts(companyName) {
       row.innerHTML = '<div class="avatar avatar-sm" style="background:'+(c.bg||'#f3f4f6')+';color:'+(c.fg||'#374151')+'">'+(c.initials||'?')+'</div>'
         + '<div class="item-main"><div class="item-name">'+c.name+'</div><div class="item-sub">'+(c.title||'')+'</div></div>'
         + '<span style="font-size:20px;color:#d1d5db">›</span>';
+      // Tap name to view, long-press or swipe button to delete
       row.addEventListener('click', function(){
         closeSheet('co-contacts-ov');
         openContactDetail(c.name);
       });
+      // Add unlink button
+      var unlinkBtn = document.createElement('button');
+      unlinkBtn.style.cssText = 'background:none;border:none;color:#9ca3af;font-size:12px;cursor:pointer;padding:4px 8px;font-family:inherit;flex-shrink:0';
+      unlinkBtn.textContent = 'Unlink';
+      (function(contact){ unlinkBtn.addEventListener('click', function(e){
+        e.stopPropagation();
+        if (confirm('Remove ' + contact.name + ' from ' + companyName + '?')) {
+          contact.company = '';
+          sheetsAPI('saveContact', {contact: contact}, function(){});
+          var idx2 = CONTACTS.findIndex(function(x){ return x.name===contact.name; });
+          if (idx2 >= 0) CONTACTS[idx2].company = '';
+          showToast(contact.name + ' unlinked ✓');
+          openCompanyContacts(companyName);
+        }
+      }); })(c);
+      row.appendChild(unlinkBtn);
       body.appendChild(row);
     });
   }
@@ -1980,6 +2061,65 @@ function debugContacts() {
     return;
   }
   alert(msg);
+}
+
+
+function debugContacts() {
+  if (!CONTACTS.length) {
+    alert('CONTACTS empty! Fetching now...');
+    sheetsAPI('getContacts', {}, function(d){
+      alert('Fetch result: ' + (d&&d.ok ? d.contacts.length+' contacts. First name: "'+d.contacts[0].name+'" charCodes: '+Array.from(d.contacts[0].name).map(function(c){return c.charCodeAt(0);}).join(',') : 'FAILED: '+JSON.stringify(d)));
+    });
+    return;
+  }
+  var first = CONTACTS[0];
+  var name = first.name || '';
+  var codes = Array.from(name).map(function(c){ return c.charCodeAt(0); }).join(',');
+  var msg = 'Count: ' + CONTACTS.length + '\n\n';
+  msg += 'First name: "' + name + '"\n';
+  msg += 'Char codes: ' + codes + '\n\n';
+  msg += 'Keys: ' + Object.keys(first).join(', ') + '\n\n';
+  msg += 'phone: ' + (first.phone||'EMPTY') + '\n';
+  msg += 'email: ' + (first.email||'EMPTY') + '\n';
+  msg += 'company: ' + (first.company||'EMPTY');
+  alert(msg);
+}
+
+
+function showContactMatchDebug(searchName) {
+  var msg = 'Searching for: "' + searchName + '"\n';
+  msg += 'Char codes: ' + Array.from(searchName).map(function(c){return c.charCodeAt(0);}).join(',') + '\n\n';
+  msg += 'All ' + CONTACTS.length + ' contact names:\n';
+  CONTACTS.forEach(function(c, i) {
+    var match = (c.name||'').toLowerCase().trim() === searchName.toLowerCase().trim() ? ' ✓ MATCH' : '';
+    msg += (i+1) + '. "' + c.name + '"' + match + '\n';
+  });
+  alert(msg);
+}
+
+
+function confirmDeleteContact(c) {
+  if (!confirm('Delete ' + c.name + '? This cannot be undone.')) return;
+  // Remove from local arrays
+  CONTACTS = CONTACTS.filter(function(x){ return x.name !== c.name; });
+  if (CONTACTS_MAP) delete CONTACTS_MAP[(c.name||'').toLowerCase()];
+  // Remove from Sheets
+  sheetsAPI('deleteContact', {id: c.id, name: c.name}, function(){});
+  renderContacts();
+  updateDashboardMetrics();
+  showToast(c.name + ' deleted');
+  goBack();
+}
+
+function confirmDeleteCompany(companyName) {
+  if (!confirm('Delete ' + companyName + '? This cannot be undone.')) return;
+  // Remove from pipeline
+  DEALS = DEALS.filter(function(d){ return d.company !== companyName; });
+  // Remove from Sheets  
+  sheetsAPI('deleteCompany', {name: companyName}, function(){});
+  renderPipeline();
+  updateDashboardMetrics();
+  showToast(companyName + ' deleted');
 }
 
 // Init calendar
