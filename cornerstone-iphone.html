@@ -43,11 +43,12 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
 .screen > *:last-child{margin-bottom:0}
 
 /* ── BOTTOM NAV ── */
-.bottom-nav{display:flex;background:#fff;border-top:1px solid var(--border);flex-shrink:0;padding-bottom:var(--safe-bottom)}
-.tab-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px;border:none;background:none;cursor:pointer;font-size:10px;font-weight:600;color:#9ca3af;font-family:inherit;position:relative}
-.tab-btn{font-size:20px;line-height:1}
+.bottom-nav{display:flex;background:#fff;border-top:1px solid var(--border);flex-shrink:0;padding:4px 2px calc(4px + var(--safe-bottom));min-height:58px}
+.tab-btn{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:5px 1px;border:none;background:none;cursor:pointer;font-size:9px;font-weight:700;color:#9ca3af;font-family:inherit;position:relative;line-height:1.05;white-space:nowrap}
+.tab-btn .nav-icon{font-size:19px;line-height:1}
+.tab-btn .nav-label{font-size:9px;line-height:1.05;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .tab-btn.active{color:var(--blue)}
-.tab-btn .badge{position:absolute;top:4px;right:calc(50% - 16px);background:var(--red);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:10px;min-width:16px;text-align:center}
+.tab-btn .badge{position:absolute;top:2px;right:calc(50% - 22px);background:var(--red);color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:10px;min-width:16px;text-align:center;line-height:1.2}
 
 /* ── CARDS ── */
 .card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)}
@@ -211,6 +212,23 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
 .info-label{font-size:13px;color:var(--gray)}
 .info-value{font-size:14px;font-weight:500;color:var(--text)}
 
+
+/* ── RANDY MOBILE POLISH - easy to revert ── */
+.sync-pill{display:inline-flex;align-items:center;gap:5px;margin-top:4px;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.14);font-size:11px;font-weight:600;color:#fff;opacity:.95}
+.sync-pill.sync-green{background:rgba(22,163,74,.95)}
+.sync-pill.sync-amber{background:rgba(245,158,11,.95)}
+.sync-pill.sync-red{background:rgba(220,38,38,.95)}
+.today-focus{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.today-tile{background:#fff;border-radius:14px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);text-align:center}
+.today-num{font-size:22px;font-weight:800;color:var(--blue);line-height:1}
+.today-label{font-size:10px;color:var(--gray);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-top:4px}
+.item-name{font-size:16px}
+.item-sub{font-size:11px}
+.fab{bottom:calc(82px + var(--safe-bottom) + 16px)}
+.card-body{padding:12px 14px}
+.metric{padding:12px}
+@media (max-width:380px){.tab-btn .nav-label{font-size:8.5px}.tab-btn .nav-icon{font-size:18px}.bottom-nav{min-height:56px}}
+
 ::-webkit-scrollbar{display:none}
 </style>
 </head>
@@ -246,6 +264,7 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
     <div>
       <div class="header-title" id="header-title">Dashboard</div>
       <div class="header-sub" id="header-sub">Good morning</div>
+      <div class="sync-pill sync-amber" id="sync-status">Syncing…</div>
     </div>
     <button class="header-btn" id="header-action-btn" onclick="openSheet('add-choice-sheet')"><span style="font-size:26px;font-weight:200">+</span></button>
   </div>
@@ -256,11 +275,15 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
     <!-- ── DASHBOARD ── -->
     <div class="screen active" id="screen-dashboard">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-        <span style="font-size:12px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.08em">Pipeline Overview</span>
+        <span style="font-size:12px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.08em">Today Focus</span>
         <button onclick="refreshDashboard()" style="background:none;border:none;font-size:12px;color:var(--blue);cursor:pointer;padding:4px 8px;font-family:inherit;font-weight:600">↻ Refresh</button>
-        <button onclick="debugContacts()" style="background:none;border:none;font-size:11px;color:#dc2626;cursor:pointer;padding:4px 8px;font-family:inherit">🔍 Debug</button>
-
       </div>
+      <div class="today-focus" id="today-focus">
+        <div class="today-tile"><div class="today-num" id="today-events-count">0</div><div class="today-label">Today</div></div>
+        <div class="today-tile"><div class="today-num" id="today-deals-count">0</div><div class="today-label">Open Deals</div></div>
+        <div class="today-tile"><div class="today-num" id="today-hot-count">0</div><div class="today-label">Hot</div></div>
+      </div>
+      <div class="section-label">Pipeline Overview</div>
       <div class="metrics-grid">
         <div class="metric">
           <div class="metric-label">Pipeline Value</div>
@@ -393,11 +416,11 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
 
   <!-- BOTTOM NAV -->
   <div class="bottom-nav">
-    <button class="tab-btn active" id="tab-dashboard" onclick="switchTab('dashboard')">🏠<br>Home</button>
-    <button class="tab-btn" id="tab-contacts" onclick="switchTab('contacts')">👥<br>Contacts</button>
-    <button class="tab-btn" id="tab-pipeline" onclick="switchTab('pipeline')">📊<br>Pipeline</button>
-    <button class="tab-btn" id="tab-accounts" onclick="switchTab('accounts')">🏢<br>Accounts</button>
-    <button class="tab-btn" id="tab-calendar" onclick="switchTab('calendar')">📅<br>Calendar</button>
+    <button class="tab-btn active" id="tab-dashboard" onclick="switchTab('dashboard')"><span class="nav-icon">🏠</span><span class="nav-label">Home</span></button>
+    <button class="tab-btn" id="tab-contacts" onclick="switchTab('contacts')"><span class="nav-icon">👥</span><span class="nav-label">Contacts</span></button>
+    <button class="tab-btn" id="tab-accounts" onclick="switchTab('accounts')"><span class="nav-icon">🏢</span><span class="nav-label">Accounts</span></button>
+    <button class="tab-btn" id="tab-calendar" onclick="switchTab('calendar')"><span class="nav-icon">📅</span><span class="nav-label">Calendar</span><span class="badge" id="calendar-badge" style="display:none">0</span></button>
+    <button class="tab-btn" id="tab-pipeline" onclick="switchTab('pipeline')"><span class="nav-icon">📊</span><span class="nav-label">Pipeline</span><span class="badge" id="pipeline-badge" style="display:none">0</span></button>
   </div>
 
 </div><!-- /app -->
@@ -546,7 +569,40 @@ function tryFetch(action, data, cb) {
   handleOffline(action, data, cb);
 }
 
-function setSyncStatus(msg, color) { /* removed */ }
+function setSyncStatus(msg, color) {
+  var el = document.getElementById('sync-status');
+  if (!el) return;
+  el.textContent = msg || 'Synced';
+  el.className = 'sync-pill sync-' + (color || 'green');
+}
+
+function hapticTap() {
+  try { if (navigator.vibrate) navigator.vibrate(8); } catch(e) {}
+}
+
+function todayCount() {
+  var today = isoDate(new Date());
+  return CAL_EVENTS.filter(function(e){ return e.date === today; }).length;
+}
+
+function updateNavBadges() {
+  var activeDeals = DEALS.filter(function(d){ return d.stage !== 'Won' && d.stage !== 'Lost'; }).length;
+  var todayEvents = todayCount();
+  var pipeBadge = document.getElementById('pipeline-badge');
+  var calBadge  = document.getElementById('calendar-badge');
+  if (pipeBadge) { pipeBadge.textContent = activeDeals; pipeBadge.style.display = activeDeals ? 'block' : 'none'; }
+  if (calBadge)  { calBadge.textContent = todayEvents; calBadge.style.display = todayEvents ? 'block' : 'none'; }
+}
+
+function updateTodayFocus() {
+  var active = DEALS.filter(function(d){ return d.stage !== 'Won' && d.stage !== 'Lost'; });
+  var hot = active.filter(function(d){ return d.status === 'hot'; }).length;
+  var el;
+  el = document.getElementById('today-events-count'); if (el) el.textContent = todayCount();
+  el = document.getElementById('today-deals-count'); if (el) el.textContent = active.length;
+  el = document.getElementById('today-hot-count'); if (el) el.textContent = hot;
+  updateNavBadges();
+}
 
 function sheetsAPI(action, data, cb) {
   if (!SHEETS_URL || SHEETS_URL === 'PASTE_YOUR_WEB_APP_URL_HERE') {
@@ -738,6 +794,7 @@ function updateDashboardMetrics() {
       actEl.appendChild(row);
     });
   }
+  updateTodayFocus();
 }
 
 function loadFromSheets(cb) {
@@ -750,7 +807,7 @@ function loadFromSheets(cb) {
     if (++done >= total) {
       if (hasData) {
         setSyncStatus('✓ Synced — ' + CONTACTS.length + ' contacts, ' + DEALS.length + ' deals', 'green');
-        setTimeout(function(){ setSyncStatus('', ''); }, 5000);
+        setTimeout(function(){ setSyncStatus('✓ Synced', 'green'); }, 5000);
       } else {
         setSyncStatus('⚠ Connected but no data found — check your Google Sheet has data', 'red');
       }
@@ -854,6 +911,7 @@ var _currentTab = 'dashboard';
 var _prevTab = null;
 
 function switchTab(tab) {
+  hapticTap();
   // Hide all screens
   document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
   document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('active'); });
@@ -1207,6 +1265,7 @@ var STAGES = ['Prospecting','Discovery','Demo','Proposal','Closing','Won'];
 var _pipeSort = 'stage';
 
 function setPipeSort(sort, btn) {
+  hapticTap();
   _pipeSort = sort;
   document.querySelectorAll('.pipe-sort-btn').forEach(function(b){
     b.style.background   = '#fff';
@@ -1453,6 +1512,7 @@ function calRender() {
 
   // Show events
   renderCalEvents(calSelectedDate);
+  updateNavBadges();
 }
 
 function selectCalDay(ds) {
@@ -1574,6 +1634,7 @@ function pickLogContact(name, company, phone) {
 }
 
 function saveLog() {
+  hapticTap();
   var contact = document.getElementById('log-contact').value.trim();
   var company = document.getElementById('log-company').value.trim();
   var notes   = document.getElementById('log-notes').value.trim();
@@ -1612,6 +1673,7 @@ function openBookSheet(contact, company) {
 function openBookSheetForEvent(id) { openSheet('book-sheet'); }
 
 function saveBooking() {
+  hapticTap();
   var title   = document.getElementById('book-title').value.trim();
   var date    = document.getElementById('book-date').value;
   var contact = document.getElementById('book-contact').value.trim();
@@ -1628,6 +1690,7 @@ function saveBooking() {
   CAL_EVENTS.push(newEv);
   sheetsAPI('saveCalEvent',{event:newEv},function(){});
   if (_currentTab==='calendar') calRender();
+  updateTodayFocus();
   closeSheet('book-sheet');
   showToast('Appointment saved ✓');
 }
@@ -1640,6 +1703,7 @@ function fmt12(t) {
 
 // ── SHEETS / OVERLAYS ────────────────────────────────────────────────
 function openSheet(id) {
+  hapticTap();
   var el = document.getElementById(id);
   if (!el) { console.warn('Sheet not found:', id); return; }
   el.classList.add('open');
@@ -1665,6 +1729,20 @@ document.addEventListener('DOMContentLoaded', function() {
   document.querySelectorAll('.sheet-overlay').forEach(function(ov){
     ov.addEventListener('click', function(e){ if(e.target===ov) closeSheet(ov.id); });
   });
+  var dash = document.getElementById('screen-dashboard');
+  var startY = 0;
+  if (dash) {
+    dash.addEventListener('touchstart', function(e){
+      startY = e.touches && e.touches.length ? e.touches[0].clientY : 0;
+    }, {passive:true});
+    dash.addEventListener('touchend', function(e){
+      var endY = e.changedTouches && e.changedTouches.length ? e.changedTouches[0].clientY : 0;
+      if (dash.scrollTop === 0 && endY - startY > 80) {
+        hapticTap();
+        refreshDashboard();
+      }
+    }, {passive:true});
+  }
 });
 
 // ── TOAST ────────────────────────────────────────────────────────────
