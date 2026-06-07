@@ -506,6 +506,7 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
 var SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyPGAmcKlRhcYWZGtMh2M2zSsQW2mLsXUGMQ6q3NW4nhWubxElcE7wl4mG_e-2mjhhh/exec';
 
 var CURRENT_SESSION = null;
+var _detailContact = null;
 var _jsonpCounter = 0;
 var _offlineActivity = [];
 
@@ -859,6 +860,7 @@ function renderContactDetail(c, log) {
       + '</div>';
   }).join('') : '<div class="empty" style="padding:20px"><p>No activity logged yet</p></div>';
 
+  _detailContact = c;
   document.getElementById('contact-detail-content').innerHTML =
     '<button class="btn" style="margin-bottom:12px" onclick="goBack()"><span style="font-style:normal;">←</span> Back</button>'
 
@@ -873,7 +875,7 @@ function renderContactDetail(c, log) {
       + '<button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="openLogSheet(\''+c.name.replace(/'/g,"\\'")+'\',\''+((c.company||'').replace(/'/g,"\\'"))+'\')">'
         + '<span style="font-style:normal;">✏</span> Log Activity'
       + '</button>'
-      + '<button class="btn" style="width:100%;margin-top:8px" id="edit-contact-btn">✎ Edit Contact</button>'
+      + '<button class="btn" style="width:100%;margin-top:8px" onclick="openEditContact(_detailContact.name)">✎ Edit Contact</button>'
     + '</div>'
 
     + '<div class="card">'
@@ -887,7 +889,7 @@ function renderContactDetail(c, log) {
         + (c.company ? (function(co){
           return '<div class="info-row" style="padding:12px 16px">'
             + '<span class="info-label">Company</span>'
-            + '<button id="co-link-btn" style="background:none;border:none;font-size:14px;font-weight:500;color:var(--blue);cursor:pointer;font-family:inherit">'+co+' 👥</button>'
+            + '<button onclick="openCompanyContacts(_detailContact.company)" style="background:none;border:none;font-size:14px;font-weight:500;color:var(--blue);cursor:pointer;font-family:inherit">'+co+' 👥</button>'
             + '</div>';
         })(c.company) : '')
       + '</div>'
@@ -1202,12 +1204,18 @@ function fmt12(t) {
 
 // ── SHEETS / OVERLAYS ────────────────────────────────────────────────
 function openSheet(id) {
-  document.getElementById(id).classList.add('open');
+  var el = document.getElementById(id);
+  if (!el) { console.warn('Sheet not found:', id); return; }
+  el.classList.add('open');
   document.body.style.overflow = 'hidden';
 }
 function closeSheet(id) {
-  document.getElementById(id).classList.remove('open');
-  document.body.style.overflow = '';
+  var el = document.getElementById(id);
+  if (el) el.classList.remove('open');
+  // Only clear overflow if no other sheets are open
+  if (!document.querySelector('.sheet-overlay.open')) {
+    document.body.style.overflow = '';
+  }
 }
 
 // Close sheets on backdrop tap (runs after DOM ready)
@@ -1576,22 +1584,22 @@ function saveNewCompany() {
       <button class="sheet-close" onclick="closeSheet('add-choice-sheet')" style="font-size:18px">✕</button>
     </div>
     <div class="sheet-body" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <button onclick="closeSheet('add-choice-sheet');openSheet('add-contact-sheet')" style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px 16px;background:var(--blue-light);border:2px solid var(--blue-mid);border-radius:16px;cursor:pointer;font-family:inherit">
+      <button onclick="closeSheet('add-choice-sheet');setTimeout(function(){openSheet('add-contact-sheet');},50)" style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px 16px;background:var(--blue-light);border:2px solid var(--blue-mid);border-radius:16px;cursor:pointer;font-family:inherit">
         <span style="font-size:36px">👤</span>
         <span style="font-size:15px;font-weight:700;color:var(--blue)">Contact</span>
         <span style="font-size:12px;color:var(--gray)">Add a person</span>
       </button>
-      <button onclick="closeSheet('add-choice-sheet');openSheet('add-company-sheet')" style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px 16px;background:#f0fdf4;border:2px solid #bbf7d0;border-radius:16px;cursor:pointer;font-family:inherit">
+      <button onclick="closeSheet('add-choice-sheet');setTimeout(function(){openSheet('add-company-sheet');},50)" style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px 16px;background:#f0fdf4;border:2px solid #bbf7d0;border-radius:16px;cursor:pointer;font-family:inherit">
         <span style="font-size:36px">🏢</span>
         <span style="font-size:15px;font-weight:700;color:var(--green)">Company</span>
         <span style="font-size:12px;color:var(--gray)">Add an account</span>
       </button>
-      <button onclick="closeSheet('add-choice-sheet');openSheet('log-sheet')" style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px 16px;background:var(--purple-light);border:2px solid #ddd6fe;border-radius:16px;cursor:pointer;font-family:inherit">
+      <button onclick="closeSheet('add-choice-sheet');setTimeout(function(){openSheet('log-sheet');},50)" style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px 16px;background:var(--purple-light);border:2px solid #ddd6fe;border-radius:16px;cursor:pointer;font-family:inherit">
         <span style="font-size:36px">📞</span>
         <span style="font-size:15px;font-weight:700;color:var(--purple)">Log Call</span>
         <span style="font-size:12px;color:var(--gray)">Record activity</span>
       </button>
-      <button onclick="closeSheet('add-choice-sheet');openSheet('book-sheet')" style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px 16px;background:var(--amber-light);border:2px solid #fde68a;border-radius:16px;cursor:pointer;font-family:inherit">
+      <button onclick="closeSheet('add-choice-sheet');setTimeout(function(){openSheet('book-sheet');},50)" style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px 16px;background:var(--amber-light);border:2px solid #fde68a;border-radius:16px;cursor:pointer;font-family:inherit">
         <span style="font-size:36px">📅</span>
         <span style="font-size:15px;font-weight:700;color:var(--amber)">Appointment</span>
         <span style="font-size:12px;color:var(--gray)">Book a meeting</span>
