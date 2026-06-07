@@ -37,8 +37,10 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
 
 /* ── SCREENS ── */
 #screens{flex:1;overflow:hidden;position:relative}
-.screen{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 14px calc(14px + var(--safe-bottom));display:none;flex-direction:column;gap:12px}
-.screen.active{display:flex}
+.screen{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 14px calc(80px + var(--safe-bottom));display:none}
+.screen.active{display:block}
+.screen > *{margin-bottom:12px}
+.screen > *:last-child{margin-bottom:0}
 
 /* ── BOTTOM NAV ── */
 .bottom-nav{display:flex;background:#fff;border-top:1px solid var(--border);flex-shrink:0;padding-bottom:var(--safe-bottom)}
@@ -603,13 +605,14 @@ function initApp() {
 }
 
 function updateDashboardMetrics() {
-  var active = DEALS.filter(function(d){ return d.stage !== "Won" && d.stage !== "Lost"; });
+  var active = DEALS.filter(function(d){ return d.stage !== 'Won' && d.stage !== 'Lost'; });
   var total  = active.reduce(function(s,d){ return s + (Number(d.value)||0); }, 0);
-  var rmr    = active.reduce(function(s,d){ return s + (Number(d.rmr)||0); }, 0);
+  var weighted = active.reduce(function(s,d){ return s + (Number(d.value)||0) * (Number(d.prob)||0) / 100; }, 0);
   var el;
-  el = document.getElementById("db-pipeline"); if(el) el.textContent = total ? "$"+(total/1000).toFixed(0)+"K" : "$0";
-  el = document.getElementById("db-deals");    if(el) el.textContent = active.length;
-  el = document.getElementById("db-rmr");      if(el) el.textContent = rmr ? "$"+(rmr/1000).toFixed(1)+"K" : "$0";
+  el = document.getElementById('db-pipeline'); if(el) el.textContent = total ? '$'+(total/1000).toFixed(0)+'K' : '$0';
+  el = document.getElementById('db-deals');    if(el) el.textContent = active.length;
+  el = document.getElementById('db-rmr');      if(el) el.textContent = weighted ? '$'+(weighted/1000).toFixed(0)+'K' : '$0';
+  el = document.getElementById('db-forecast'); if(el) el.textContent = weighted ? '$'+(weighted/1000).toFixed(0)+'K' : '$0';
   // Recent activity on dashboard
   var actEl = document.getElementById("dashboard-activity");
   if (actEl && ALL_ACTIVITY.length) {
@@ -631,7 +634,7 @@ function updateDashboardMetrics() {
 
 function loadFromSheets(cb) {
   var done = 0;
-  var total = 3;
+  var total = 4;
   function check() { if (++done >= total && cb) cb(); }
 
   // Load contacts
@@ -681,6 +684,14 @@ function loadFromSheets(cb) {
           notes:   e.notes   || ''
         };
       });
+    }
+    check();
+  });
+
+  // Load recent activity for dashboard
+  sheetsAPI('getActivity', {}, function(data) {
+    if (data && data.ok && data.activity && data.activity.length) {
+      ALL_ACTIVITY = data.activity;
     }
     check();
   });
