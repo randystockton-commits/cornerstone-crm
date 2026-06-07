@@ -1284,6 +1284,14 @@ function renderContactDetail(c, log) {
   logBtn.addEventListener('click', function(){ openLogSheet(_detailContact.name, _detailContact.company||''); });
   hero.appendChild(logBtn);
 
+  // Schedule button - added in v12
+  var schedBtn = document.createElement('button');
+  schedBtn.className = 'btn';
+  schedBtn.style.cssText = 'width:100%;margin-top:8px;border-color:var(--blue-mid);color:var(--blue);background:var(--blue-light)';
+  schedBtn.innerHTML = '📅 Schedule Call / Meeting';
+  schedBtn.addEventListener('click', function(){ openBookSheet(_detailContact.name || '', _detailContact.company || ''); });
+  hero.appendChild(schedBtn);
+
   // Edit Contact button
   var editBtn = document.createElement('button');
   editBtn.className = 'btn';
@@ -1992,11 +2000,13 @@ function saveLog() {
 
 // ── BOOKING ──────────────────────────────────────────────────────────
 var _editingEventId = null;
+var _bookCompanyContext = '';
 
 function openBookSheet(contact, company) {
   _editingEventId = null;
+  _bookCompanyContext = company || '';
   var today = new Date().toISOString().split('T')[0];
-  document.getElementById('book-title').value = '';
+  document.getElementById('book-title').value = company ? 'Follow-up with ' + company : '';
   document.getElementById('book-type').value = 'call';
   document.getElementById('book-contact').value = contact || '';
   document.getElementById('book-date').value = today;
@@ -2174,6 +2184,7 @@ function openBookSheetForEvent(id) {
   _editingEventId = id;
   var ev = CAL_EVENTS.find(function(e){ return String(e.id) === String(id); });
   if (!ev) { showToast('Event not found'); return; }
+  _bookCompanyContext = ev.company || '';
   document.getElementById('book-title').value = ev.title || '';
   document.getElementById('book-type').value = ev.type || 'call';
   document.getElementById('book-contact').value = ev.contact || '';
@@ -2196,6 +2207,7 @@ function saveBooking() {
   var start   = document.getElementById('book-start').value;
   var end     = document.getElementById('book-end').value;
   var notes   = document.getElementById('book-notes').value.trim();
+  var company = _bookCompanyContext || '';
   if (!title||!date) { showToast('Please add a title and date'); return; }
 
   // Warn if the selected time overlaps another appointment on the same day.
@@ -2213,7 +2225,7 @@ function saveBooking() {
     id: _editingEventId || Date.now(), date: date, title: title, type: type,
     start: start, end: end,
     time: start ? fmt12(start) : '',
-    contact: contact, notes: notes
+    contact: contact, company: company, notes: notes
   };
 
   if (_editingEventId) {
@@ -2232,6 +2244,7 @@ function saveBooking() {
   closeSheet('book-sheet');
   showToast(_editingEventId ? 'Appointment updated ✓' : 'Appointment saved ✓');
   _editingEventId = null;
+  _bookCompanyContext = '';
   setBookSheetMode(false);
 }
 
@@ -2941,6 +2954,14 @@ function renderAccountDetail(co) {
   btnRow.appendChild(contactsBtn);
 
   hero.appendChild(btnRow);
+
+  // Schedule button - added in v12
+  var schedBtn = document.createElement('button');
+  schedBtn.className = 'btn';
+  schedBtn.style.cssText = 'width:100%;margin-top:8px;border-color:var(--blue-mid);color:var(--blue);background:var(--blue-light)';
+  schedBtn.innerHTML = '📅 Schedule Call / Meeting / Follow-Up';
+  schedBtn.addEventListener('click', function(){ openBookSheet('', co.name); });
+  hero.appendChild(schedBtn);
 
   var editBtn = document.createElement('button');
   editBtn.className = 'btn';
