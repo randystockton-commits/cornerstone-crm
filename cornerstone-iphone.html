@@ -267,6 +267,24 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
 .book-selected-date{font-size:12px;font-weight:700;color:var(--gray);margin:8px 0 0;text-align:center}
 
 
+
+/* ── RANDY BUILD 6 SALES WORKFLOW - easy to revert ── */
+.build6-account-tools{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.build6-sort{flex-shrink:0;border:1.5px solid var(--border);border-radius:999px;background:#fff;color:var(--text);font-size:12px;font-weight:700;padding:8px 10px;font-family:inherit}
+.build6-toggle{flex-shrink:0;border:1.5px solid var(--border);border-radius:999px;background:#fff;color:var(--gray);font-size:12px;font-weight:800;padding:8px 10px;font-family:inherit;cursor:pointer}
+.build6-toggle.active{background:var(--blue);border-color:var(--blue);color:#fff}
+.build6-recent-card{background:#fff;border-radius:14px;padding:10px 12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.build6-small-title{font-size:11px;font-weight:900;color:var(--gray);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px}
+.build6-chip-row{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none}
+.build6-chip{flex-shrink:0;border:none;border-radius:999px;background:var(--blue-light);color:var(--blue);font-size:12px;font-weight:800;padding:8px 10px;font-family:inherit;cursor:pointer}
+.build6-account-meta{font-size:11px;color:var(--gray);margin-top:3px;line-height:1.3;white-space:normal}
+.build6-next{font-weight:800}.build6-next.overdue{color:var(--red)}.build6-next.today{color:#b45309}.build6-next.future{color:var(--green)}.build6-next.none{color:var(--gray)}
+.build6-myday-row{display:flex;gap:10px;align-items:flex-start;padding:12px 16px;border-bottom:1px solid #f3f4f6;cursor:pointer}.build6-myday-row:last-child{border-bottom:none}
+.build6-myday-icon{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--blue-light)}
+.build6-myday-title{font-size:14px;font-weight:800}.build6-myday-sub{font-size:12px;color:var(--gray);margin-top:2px;line-height:1.35}
+.build6-next-action{background:#f8fafc;border:1.5px solid var(--border);border-radius:14px;padding:12px;margin-bottom:16px}
+.build6-next-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.build6-next-btn{border:1.5px solid var(--border);background:#fff;border-radius:12px;padding:10px 8px;font-size:12px;font-weight:800;font-family:inherit;color:var(--text);cursor:pointer}.build6-next-btn.selected{background:var(--blue);border-color:var(--blue);color:#fff}.build6-next-btn.clear{color:var(--gray)}
+
 ::-webkit-scrollbar{display:none}
 </style>
 </head>
@@ -321,6 +339,10 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
         <div class="today-tile"><div class="today-num" id="today-deals-count">0</div><div class="today-label">Open Deals</div></div>
         <div class="today-tile"><div class="today-num" id="today-hot-count">0</div><div class="today-label">Hot</div></div>
       </div>
+      <div class="card" id="my-day-card">
+        <div class="card-header"><span class="card-title">🎯 My Day</span></div>
+        <div id="my-day-list"></div>
+      </div>
       <div class="section-label">Pipeline Overview</div>
       <div class="metrics-grid">
         <div class="metric">
@@ -374,6 +396,10 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
         <span style="font-size:16px;opacity:.5">🔍</span>
         <input type="text" placeholder="Search contacts…" id="contact-search" oninput="filterContacts(this.value)">
       </div>
+      <div class="build6-recent-card" id="recent-contacts-card" style="display:none">
+        <div class="build6-small-title">Recently Viewed</div>
+        <div class="build6-chip-row" id="recent-contacts-list"></div>
+      </div>
       <div class="card" id="contacts-list-card">
         <div id="contacts-list"></div>
       </div>
@@ -384,6 +410,23 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
       <div class="search-bar">
         <span style="font-size:16px;opacity:.5">🔍</span>
         <input type="text" placeholder="Search accounts…" id="account-search" oninput="filterAccounts(this.value)">
+      </div>
+      <div class="build6-recent-card" id="recent-accounts-card" style="display:none">
+        <div class="build6-small-title">Recently Viewed</div>
+        <div class="build6-chip-row" id="recent-accounts-list"></div>
+      </div>
+      <div class="build6-account-tools">
+        <select class="build6-sort" id="account-sort-select" onchange="setAccountSort(this.value)">
+          <option value="nextAsc">Next Activity ↑</option>
+          <option value="nextDesc">Next Activity ↓</option>
+          <option value="lastOldest">Last Contact Oldest</option>
+          <option value="lastNewest">Last Contact Newest</option>
+          <option value="az">Company A-Z</option>
+        </select>
+        <button class="build6-toggle active" id="toggle-overdue" onclick="toggleAccountFilter('overdue')">Overdue</button>
+        <button class="build6-toggle active" id="toggle-today" onclick="toggleAccountFilter('today')">Today</button>
+        <button class="build6-toggle active" id="toggle-future" onclick="toggleAccountFilter('future')">Future</button>
+        <button class="build6-toggle active" id="toggle-none" onclick="toggleAccountFilter('none')">No Activity</button>
       </div>
       <div class="card" id="accounts-list-card">
         <div id="accounts-list"></div>
@@ -506,6 +549,18 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
       <div class="form-group">
         <label class="form-label">Notes</label>
         <textarea class="form-input form-textarea" id="log-notes" placeholder="Optional — key takeaways, next steps…"></textarea>
+      </div>
+      <div class="build6-next-action">
+        <div class="build6-small-title">Next Activity</div>
+        <div class="build6-next-grid">
+          <button type="button" class="build6-next-btn" data-next="Call Back" onclick="selectNextAction(this)">📞 Call Back</button>
+          <button type="button" class="build6-next-btn" data-next="Demo" onclick="selectNextAction(this)">🖥 Demo</button>
+          <button type="button" class="build6-next-btn" data-next="Proposal" onclick="selectNextAction(this)">📄 Proposal</button>
+          <button type="button" class="build6-next-btn" data-next="Follow Up" onclick="selectNextAction(this)">⏰ Follow Up</button>
+          <button type="button" class="build6-next-btn" data-next="Waiting On Customer" onclick="selectNextAction(this)">⏳ Waiting</button>
+          <button type="button" class="build6-next-btn clear" data-next="" onclick="selectNextAction(this)">No Next</button>
+        </div>
+        <input class="form-input" type="date" id="log-next-date" style="margin-top:10px;display:none">
       </div>
       <button class="btn btn-primary btn-block btn-lg" onclick="saveLog()">
         <span style="font-style:normal;">✓</span> Save & Log
