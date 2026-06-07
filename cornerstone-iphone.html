@@ -318,6 +318,22 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
       </div>
     </div>
 
+    <!-- ── ACCOUNTS ── -->
+    <div class="screen" id="screen-accounts">
+      <div class="search-bar">
+        <span style="font-size:16px;opacity:.5">🔍</span>
+        <input type="text" placeholder="Search accounts…" id="account-search" oninput="filterAccounts(this.value)">
+      </div>
+      <div class="card" id="accounts-list-card">
+        <div id="accounts-list"></div>
+      </div>
+    </div>
+
+    <!-- ── ACCOUNT DETAIL (sub-screen) ── -->
+    <div class="screen" id="screen-account-detail">
+      <div id="account-detail-content"></div>
+    </div>
+
     <!-- ── CONTACT DETAIL (sub-screen) ── -->
     <div class="screen" id="screen-contact-detail">
       <div id="contact-detail-content"></div>
@@ -377,16 +393,11 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
 
   <!-- BOTTOM NAV -->
   <div class="bottom-nav">
-    <button class="tab-btn active" id="tab-dashboard" onclick="switchTab('dashboard')">🏠<br>Home
-    </button>
-    <button class="tab-btn" id="tab-contacts" onclick="switchTab('contacts')">👥<br>Contacts
-    </button>
-    <button class="tab-btn" id="tab-pipeline" onclick="switchTab('pipeline')">📊<br>Pipeline
-    </button>
-    <button class="tab-btn" id="tab-calendar" onclick="switchTab('calendar')">📅<br>Calendar
-    </button>
-    <button class="tab-btn" id="tab-activity" onclick="switchTab('activity')">📋<br>Log
-    </button>
+    <button class="tab-btn active" id="tab-dashboard" onclick="switchTab('dashboard')">🏠<br>Home</button>
+    <button class="tab-btn" id="tab-contacts" onclick="switchTab('contacts')">👥<br>Contacts</button>
+    <button class="tab-btn" id="tab-pipeline" onclick="switchTab('pipeline')">📊<br>Pipeline</button>
+    <button class="tab-btn" id="tab-accounts" onclick="switchTab('accounts')">🏢<br>Accounts</button>
+    <button class="tab-btn" id="tab-calendar" onclick="switchTab('calendar')">📅<br>Calendar</button>
   </div>
 
 </div><!-- /app -->
@@ -854,15 +865,16 @@ function switchTab(tab) {
   if (btn) btn.classList.add('active');
 
   // Update header
-  var titles = {dashboard:'Dashboard',contacts:'Contacts',pipeline:'Pipeline',calendar:'Calendar',activity:'Activity Log'};
+  var titles = {dashboard:'Dashboard',contacts:'Contacts',pipeline:'Pipeline',accounts:'Accounts',calendar:'Calendar',activity:'Activity Log'};
   document.getElementById('header-title').textContent = titles[tab] || tab;
   _currentTab = tab;
 
   // Show/hide FAB
-  document.getElementById('fab-btn').style.display = ['dashboard','contacts','activity'].includes(tab) ? 'flex' : 'none';
+  document.getElementById('fab-btn').style.display = ['dashboard','contacts','accounts','activity'].includes(tab) ? 'flex' : 'none';
 
   // Re-render calendar every time we switch to it so dots are fresh
   if (tab === 'calendar') calRender();
+  if (tab === 'accounts') renderAccounts();
 }
 
 function goBack() {
@@ -2174,6 +2186,228 @@ function togglePrimaryContact(c) {
     btn.textContent = nowPrimary ? '⭐ Primary Contact' : '☆ Set as Primary Contact';
     btn.style.cssText = 'width:100%;margin-top:8px;' + (nowPrimary ? 'background:#fef3c7;border-color:#f59e0b;color:#b45309;font-weight:700' : '');
   }
+}
+
+
+// ── ACCOUNTS ─────────────────────────────────────────────────────────
+var COMPANIES = []; // loaded from Sheets
+
+function loadCompanies(cb) {
+  if (COMPANIES.length) { if(cb) cb(); return; }
+  sheetsAPI('getCompanies', {}, function(data) {
+    if (data && data.ok && data.companies && data.companies.length) {
+      COMPANIES = data.companies;
+    }
+    if (cb) cb();
+  });
+}
+
+function renderAccounts(filter) {
+  loadCompanies(function() {
+    var list = document.getElementById('accounts-list');
+    if (!list) return;
+    var companies = filter
+      ? COMPANIES.filter(function(c){
+          return ((c.name||'')+(c.stage||'')+(c.software||'')).toLowerCase().includes(filter.toLowerCase());
+        })
+      : COMPANIES.slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+
+    if (!companies.length) {
+      list.innerHTML = '<div class="empty" style="padding:30px"><p>No accounts found</p></div>';
+      return;
+    }
+
+    var stageColors = {
+      Prospect:'#f3f4f6',Discovery:'#dbeafe',Demo:'#ede9fe',
+      Proposal:'#fef3c7',Negotiation:'#fed7aa',
+      'Closed Won':'#dcfce7','Closed Lost':'#fee2e2'
+    };
+    var stageText = {
+      Prospect:'#374151',Discovery:'#1d4ed8',Demo:'#6d28d9',
+      Proposal:'#b45309',Negotiation:'#c2410c',
+      'Closed Won':'#15803d','Closed Lost':'#b91c1c'
+    };
+
+    list.innerHTML = '';
+    companies.forEach(function(co) {
+      var row = document.createElement('div');
+      row.className = 'list-item';
+      row.style.cursor = 'pointer';
+      var stageBg = stageColors[co.stage] || '#f3f4f6';
+      var stageFg = stageText[co.stage]   || '#374151';
+      // Get primary contact name
+      var primaryContact = CONTACTS.find(function(c){
+        return (c.company||'').toLowerCase()===(co.name||'').toLowerCase()
+          && (c.isPrimary==='TRUE'||c.isPrimary===true);
+      });
+      var ini = (co.name||'').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().substr(0,2);
+      row.innerHTML = ''
+        + '<div class="avatar" style="background:'+stageBg+';color:'+stageFg+'">'+ini+'</div>'
+        + '<div class="item-main">'
+          + '<div class="item-name">'+co.name+'</div>'
+          + '<div class="item-sub">'+(primaryContact?primaryContact.name+' · ':'')+(co.software||'')+(co.accounts?' · '+co.accounts+' accts':'')+'</div>'
+        + '</div>'
+        + '<span style="display:inline-flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0">'
+          + '<span class="tag" style="background:'+stageBg+';color:'+stageFg+';font-size:10px">'+(co.stage||'')+'</span>'
+          + (co.dealValue ? '<span style="font-size:12px;font-weight:700;color:var(--blue)">$'+Math.round(Number(co.dealValue)/1000)+'K</span>' : '')
+        + '</span>';
+      row.addEventListener('click', function(){ openAccountDetail(co.name); });
+      list.appendChild(row);
+    });
+  });
+}
+
+function filterAccounts(val) { renderAccounts(val); }
+
+function openAccountDetail(name) {
+  var co = COMPANIES.find(function(c){ return c.name===name; });
+  if (!co) return;
+  _prevTab = _currentTab;
+  document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
+  document.getElementById('screen-account-detail').classList.add('active');
+  document.getElementById('header-title').textContent = co.name;
+  renderAccountDetail(co);
+}
+
+function renderAccountDetail(co) {
+  var root = document.getElementById('account-detail-content');
+  root.innerHTML = '';
+
+  // Back button
+  var backBtn = document.createElement('button');
+  backBtn.className = 'btn';
+  backBtn.style.marginBottom = '12px';
+  backBtn.textContent = '← Back';
+  backBtn.addEventListener('click', function(){ switchTab('accounts'); });
+  root.appendChild(backBtn);
+
+  // Hero
+  var stageColors = {Prospect:'#f3f4f6',Discovery:'#dbeafe',Demo:'#ede9fe',Proposal:'#fef3c7',Negotiation:'#fed7aa','Closed Won':'#dcfce7','Closed Lost':'#fee2e2'};
+  var stageText   = {Prospect:'#374151',Discovery:'#1d4ed8',Demo:'#6d28d9',Proposal:'#b45309',Negotiation:'#c2410c','Closed Won':'#15803d','Closed Lost':'#b91c1c'};
+  var stageBg = stageColors[co.stage]||'#f3f4f6';
+  var stageFg = stageText[co.stage]||'#374151';
+  var ini = (co.name||'').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().substr(0,2);
+
+  var hero = document.createElement('div');
+  hero.className = 'contact-hero';
+  hero.innerHTML = '<div class="avatar" style="background:'+stageBg+';color:'+stageFg+';width:64px;height:64px;font-size:18px">'+ini+'</div>'
+    + '<div class="contact-hero-name">'+co.name+'</div>'
+    + '<div class="contact-hero-sub"><span class="tag" style="background:'+stageBg+';color:'+stageFg+'">'+co.stage+'</span></div>';
+
+  // Action buttons
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px;margin-top:12px;width:100%';
+
+  var logBtn = document.createElement('button');
+  logBtn.className = 'btn btn-primary';
+  logBtn.style.flex = '1';
+  logBtn.textContent = '✏ Log Activity';
+  logBtn.addEventListener('click', function(){ openLogSheet('', co.name); });
+  btnRow.appendChild(logBtn);
+
+  var contactsBtn = document.createElement('button');
+  contactsBtn.className = 'btn';
+  contactsBtn.style.flex = '1';
+  contactsBtn.textContent = '👥 Contacts';
+  contactsBtn.addEventListener('click', function(){ openCompanyContacts(co.name); });
+  btnRow.appendChild(contactsBtn);
+
+  hero.appendChild(btnRow);
+
+  var editBtn = document.createElement('button');
+  editBtn.className = 'btn';
+  editBtn.style.cssText = 'width:100%;margin-top:8px';
+  editBtn.textContent = '✎ Edit Account';
+  editBtn.addEventListener('click', function(){ openEditAccount(co); });
+  hero.appendChild(editBtn);
+
+  var delBtn = document.createElement('button');
+  delBtn.className = 'btn';
+  delBtn.style.cssText = 'width:100%;margin-top:8px;color:var(--red);border-color:#fca5a5';
+  delBtn.textContent = '🗑 Delete Account';
+  delBtn.addEventListener('click', function(){ confirmDeleteCompany(co.name); });
+  hero.appendChild(delBtn);
+
+  root.appendChild(hero);
+
+  // Account Info
+  var infoCard = document.createElement('div');
+  infoCard.className = 'card';
+  infoCard.innerHTML = '<div class="card-header"><span class="card-title">Account Info</span></div>';
+  var infoBody = document.createElement('div');
+  infoBody.style.padding = '4px 0';
+
+  function addRow(label, val) {
+    if (!val) return;
+    var r = document.createElement('div');
+    r.className = 'info-row';
+    r.style.padding = '12px 16px';
+    r.innerHTML = '<span class="info-label">'+label+'</span><span class="info-value">'+val+'</span>';
+    infoBody.appendChild(r);
+  }
+
+  addRow('Accounts',   co.accounts);
+  addRow('RMR',        co.rmr ? '$'+Number(co.rmr).toLocaleString() : '');
+  addRow('Deal Value', co.dealValue ? '$'+Number(co.dealValue).toLocaleString() : '');
+  addRow('Probability',co.prob ? co.prob+'%' : '');
+  addRow('Software',   co.software);
+  addRow('CS Provider',co.cs);
+  addRow('Migration',  co.migration);
+  addRow('Close Target',co.closeTarget);
+  addRow('Contracts',  co.contracts);
+  addRow('Technicians',co.techs);
+
+  // Pain points
+  if (co.painPoints) {
+    var pains = co.painPoints.split('|').filter(Boolean);
+    if (pains.length) addRow('Pain Points', pains.join(' · '));
+  }
+
+  infoCard.appendChild(infoBody);
+  root.appendChild(infoCard);
+
+  // Contacts at this company
+  var coContacts = CONTACTS.filter(function(c){ return (c.company||'').toLowerCase()===(co.name||'').toLowerCase(); });
+  if (coContacts.length) {
+    var secLabel = document.createElement('div');
+    secLabel.className = 'section-label';
+    secLabel.textContent = 'Contacts (' + coContacts.length + ')';
+    root.appendChild(secLabel);
+
+    var cCard = document.createElement('div');
+    cCard.className = 'card';
+    coContacts.forEach(function(c) {
+      var cRow = document.createElement('div');
+      cRow.className = 'list-item';
+      cRow.style.cursor = 'pointer';
+      var isPri = c.isPrimary==='TRUE'||c.isPrimary===true;
+      cRow.innerHTML = '<div class="avatar avatar-sm" style="background:'+(c.bg||'#f3f4f6')+';color:'+(c.fg||'#374151')+'">'+(c.initials||'?')+'</div>'
+        + '<div class="item-main"><div class="item-name">'+c.name+(isPri?' ⭐':'')+'</div><div class="item-sub">'+(c.title||'')+(c.phone?' · '+c.phone:'')+'</div></div>'
+        + '<span style="font-size:18px;color:#d1d5db">›</span>';
+      cRow.addEventListener('click', function(){ openContactDetail(c.name); });
+      cCard.appendChild(cRow);
+    });
+    root.appendChild(cCard);
+  }
+}
+
+function openEditAccount(co) {
+  // Pre-fill the add company form with existing data
+  document.getElementById('co-name').value     = co.name     || '';
+  document.getElementById('co-accounts').value = co.accounts || '';
+  document.getElementById('co-rmr').value      = co.rmr      || '';
+  document.getElementById('co-value').value    = co.dealValue|| '';
+  document.getElementById('co-contact').value  = co.contact  || '';
+  document.getElementById('co-notes').value    = co.notesLog || '';
+  var sw = document.getElementById('co-software');
+  var cs = document.getElementById('co-cs');
+  var st = document.getElementById('co-stage');
+  if (sw) for(var i=0;i<sw.options.length;i++) if(sw.options[i].value===co.software) sw.selectedIndex=i;
+  if (cs) for(var i=0;i<cs.options.length;i++) if(cs.options[i].value===co.cs) cs.selectedIndex=i;
+  if (st) for(var i=0;i<st.options.length;i++) if(st.options[i].value===co.stage) st.selectedIndex=i;
+  var titleEl = document.querySelector('#add-company-sheet .sheet-title');
+  if (titleEl) titleEl.textContent = 'Edit Account';
+  openSheet('add-company-sheet');
 }
 
 // Init calendar
