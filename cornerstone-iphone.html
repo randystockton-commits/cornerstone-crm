@@ -258,6 +258,7 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
         <span style="font-size:12px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.08em">Pipeline Overview</span>
         <button onclick="refreshDashboard()" style="background:none;border:none;font-size:12px;color:var(--blue);cursor:pointer;padding:4px 8px;font-family:inherit;font-weight:600">↻ Refresh</button>
+
       </div>
       <div class="metrics-grid">
         <div class="metric">
@@ -514,6 +515,7 @@ var SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyPGAmcKlRhcYWZGtMh2M2
 var CURRENT_SESSION = null;
 var _detailContact = null;
 var _currentDealId = null;
+var CONTACTS_MAP = {}; // name.toLowerCase() -> contact object
 var _jsonpCounter = 0;
 var _offlineActivity = [];
 
@@ -644,7 +646,7 @@ function refreshDashboard() {
   loadFromSheets(function() {
     renderContacts();
     renderPipeline();
-    renderCalendar();
+    calRender();
     renderActivity();
     updateDashboardMetrics();
     showToast('Dashboard refreshed ✓');
@@ -655,7 +657,7 @@ function initApp() {
   loadFromSheets(function() {
     renderContacts();
     renderPipeline();
-    renderCalendar();
+    calRender();
     renderActivity();
     updateDashboardMetrics();
   });
@@ -762,7 +764,12 @@ function loadFromSheets(cb) {
         if (!c.fg) c.fg = '#374151';
         return c;
       });
-      updateDashboardMetrics(); // update contacts count immediately
+      // Build lookup map for fast reliable name matching
+      CONTACTS_MAP = {};
+      CONTACTS.forEach(function(c){
+        if (c.name) CONTACTS_MAP[c.name.trim().toLowerCase()] = c;
+      });
+      updateDashboardMetrics();
       check(true);
     } else { check(false); }
   });
@@ -803,6 +810,8 @@ function loadFromSheets(cb) {
           notes:   e.notes   || ''
         };
       });
+      // Re-render calendar now that events are loaded
+      calRender();
       check(true);
     } else { check(false); }
   });
@@ -840,6 +849,9 @@ function switchTab(tab) {
 
   // Show/hide FAB
   document.getElementById('fab-btn').style.display = ['dashboard','contacts','activity'].includes(tab) ? 'flex' : 'none';
+
+  // Re-render calendar every time we switch to it so dots are fresh
+  if (tab === 'calendar') calRender();
 }
 
 function goBack() {
@@ -888,9 +900,28 @@ function openContactDetail(name) {
 
   // Look up contact - re-check CONTACTS array at call time (may have loaded since app start)
   function getContact() {
-    return CONTACTS.find(function(x){ return (x.name||'').trim() === nameTrimmed; })
-        || CONTACTS.find(function(x){ return (x.name||'').trim().toLowerCase() === nameTrimmed.toLowerCase(); })
-        || null;
+    if (!CONTACTS || !CONTACTS.length) return null;
+    var key = nameTrimmed.toLowerCase().trim();
+    // Try every possible match
+    for (var i = 0; i < CONTACTS.length; i++) {
+      var cname = String(CONTACTS[i].name || '').toLowerCase().trim();
+      if (cname === key) return CONTACTS[i];
+    }
+    // Remove any non-printable chars and retry
+    var cleanKey = key.replace(/[^ -~]/g, '').trim();
+    for (var i = 0; i < CONTACTS.length; i++) {
+      var cname = String(CONTACTS[i].name || '').replace(/[^ -~]/g, '').toLowerCase().trim();
+      if (cname === cleanKey) return CONTACTS[i];
+    }
+    // Partial last name match
+    var parts = cleanKey.split(' ').filter(Boolean);
+    if (parts.length >= 2) {
+      for (var i = 0; i < CONTACTS.length; i++) {
+        var cname = String(CONTACTS[i].name || '').toLowerCase();
+        if (cname.indexOf(parts[parts.length-1]) > -1 && cname.indexOf(parts[0]) > -1) return CONTACTS[i];
+      }
+    }
+    return null;
   }
 
   var c = getContact();
@@ -901,26 +932,20 @@ function openContactDetail(name) {
     c = {name: nameTrimmed, initials: ini, bg: '#f3f4f6', fg: '#374151', company: ''};
   }
 
-  // Render immediately with what we have
-  renderContactDetail(c, []);
+  // Render immediately with best contact data we have
+  var cNow = getContact() || c;
+  renderContactDetail(cNow, []);
 
-  // Load activity and re-render with full data
+  // Then load activity and re-render with full data
   sheetsAPI('getActivity', {contact: nameTrimmed}, function(data) {
     var log = (data && data.ok) ? (data.activity||[]) : _offlineActivity.filter(function(e){return e.contact===nameTrimmed;});
-    // Re-lookup contact in case CONTACTS loaded while we were waiting
-    var cFresh = getContact() || c;
-    renderContactDetail(cFresh, log);
+    // Re-lookup contact - CONTACTS should be loaded by now
+    renderContactDetail(getContact() || c, log);
   });
 }
 
 function renderContactDetail(c, log) {
   _detailContact = c;
-  console.log('renderContactDetail:', JSON.stringify({
-    name: c.name, phone: c.phone, mobile: c.mobile,
-    email: c.email, title: c.title, company: c.company,
-    address: c.address, city: c.city, state: c.state,
-    keys: Object.keys(c)
-  }));
   var typeColors = {call:['#dcfce7','#15803d'],email:['#dbeafe','#1d4ed8'],meeting:['#ede9fe','#6d28d9'],voicemail:['#fef3c7','#b45309'],note:['#f3f4f6','#6b7280'],demo:['#dbeafe','#1d4ed8']};
   var iconMap    = {call:'📞',email:'✉',meeting:'🤝',voicemail:'📬',note:'📝',demo:'🖥'};
 
@@ -988,11 +1013,13 @@ function renderContactDetail(c, log) {
   infoHeader.className = 'card-header';
   infoHeader.innerHTML = '<span class="card-title">Contact Info</span>';
   infoCard.appendChild(infoHeader);
+
+
   var infoBody = document.createElement('div');
   infoBody.style.padding = '4px 0';
 
   function addInfoRow(label, val) {
-    if (!val) return;
+    if (!val || val === 'undefined' || val === 'null') return;
     var row = document.createElement('div');
     row.className = 'info-row';
     row.style.padding = '12px 16px';
@@ -1000,12 +1027,14 @@ function renderContactDetail(c, log) {
     infoBody.appendChild(row);
   }
 
-  addInfoRow('Phone',   c.phone   || '');
-  addInfoRow('Mobile',  c.mobile  || '');
-  addInfoRow('Email',   c.email   || '');
-  addInfoRow('Title',   c.title   || '');
-  addInfoRow('Prefers', c.prefer  || '');
-  addInfoRow('Role',    c.role    || '');
+  // Use direct field access — data confirmed present with these exact key names
+  addInfoRow('Phone',   c.phone);
+  addInfoRow('Mobile',  c.mobile);
+  addInfoRow('Email',   c.email);
+  addInfoRow('Title',   c.title);
+  addInfoRow('Prefers', c.prefer);
+  addInfoRow('Best Time', c.bestTime);
+  addInfoRow('Role',    c.role);
 
   // Address
   var addrParts = [];
@@ -1013,6 +1042,14 @@ function renderContactDetail(c, log) {
   var cityState = [c.city, c.state].filter(Boolean).join(', ');
   if (cityState) addrParts.push(cityState + (c.zip ? ' ' + c.zip : ''));
   if (addrParts.length) addInfoRow('Address', addrParts.join(', '));
+
+  // If NO fields showed, display all non-empty keys as fallback
+  if (!infoBody.children.length) {
+    var skip = {name:1,nameLower:1,initials:1,bg:1,fg:1,notesLog:1,createdAt:1,updatedAt:1,updatedBy:1,id:1};
+    Object.keys(c).forEach(function(k){
+      if (!skip[k] && c[k] && String(c[k]).trim()) addInfoRow(k, c[k]);
+    });
+  }
 
   // Company — tappable
   if (c.company) {
@@ -1920,6 +1957,31 @@ function openLinkOrAddContact(companyName) {
   openSheet('link-contact-ov');
 }
 
+
+function debugContacts() {
+  var msg = 'CONTACTS array length: ' + CONTACTS.length + '\n';
+  msg += 'CONTACTS_MAP keys: ' + Object.keys(CONTACTS_MAP).length + '\n\n';
+  if (CONTACTS.length > 0) {
+    var c = CONTACTS[0];
+    msg += 'First contact keys:\n' + Object.keys(c).join(', ') + '\n\n';
+    msg += 'First contact values:\n';
+    Object.keys(c).forEach(function(k){ if(c[k]) msg += k + ': ' + c[k] + '\n'; });
+  } else {
+    msg += 'CONTACTS is empty!\n';
+    msg += '\nTrying to fetch now...';
+    sheetsAPI('getContacts', {}, function(data){
+      if (data && data.ok) {
+        alert('Fetch OK. Count: ' + (data.contacts||[]).length + '\nFirst keys: ' + 
+          (data.contacts && data.contacts[0] ? Object.keys(data.contacts[0]).join(', ') : 'none'));
+      } else {
+        alert('Fetch FAILED: ' + JSON.stringify(data));
+      }
+    });
+    return;
+  }
+  alert(msg);
+}
+
 // Init calendar
 calRender();
 
@@ -1976,6 +2038,7 @@ function saveNewContact() {
   var isEdit = existingIdx >= 0;
   if (isEdit) { contact.id = CONTACTS[existingIdx].id || contact.id; CONTACTS[existingIdx] = contact; }
   else { CONTACTS.unshift(contact); }
+  CONTACTS_MAP[name.toLowerCase()] = contact; // keep map in sync
   sheetsAPI('saveContact', {contact: contact}, function(){});
   renderContacts();
   updateDashboardMetrics();
