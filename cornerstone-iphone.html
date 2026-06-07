@@ -265,6 +265,7 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
 .book-mini-day.busy-6{background:#fee2e2}
 .book-mini-day.selected.busy-1,.book-mini-day.selected.busy-3,.book-mini-day.selected.busy-6{background:var(--blue)}
 .book-selected-date{font-size:12px;font-weight:700;color:var(--gray);margin:8px 0 0;text-align:center}
+.log-next-mini .book-mini-day{min-height:36px}.log-next-mini .book-mini-title{font-size:14px}.log-next-mini .book-mini-nav{width:30px;height:30px}.log-next-mini .book-mini-week div{font-size:9px}.log-next-mini .book-mini-day .num{font-size:12px}
 
 
 
@@ -560,7 +561,19 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
           <button type="button" class="build6-next-btn" data-next="Waiting On Customer" onclick="selectNextAction(this)">⏳ Waiting</button>
           <button type="button" class="build6-next-btn clear" data-next="" onclick="selectNextAction(this)">No Next</button>
         </div>
-        <input class="form-input" type="date" id="log-next-date" style="margin-top:10px;display:none">
+        <input type="hidden" id="log-next-date">
+        <div class="book-mini-calendar log-next-mini" id="log-next-mini" style="display:none;margin-top:10px;margin-bottom:0">
+          <div class="book-mini-header">
+            <button class="book-mini-nav" type="button" onclick="logNextMiniPrev()">‹</button>
+            <div class="book-mini-title" id="log-next-mini-title">Month Year</div>
+            <button class="book-mini-nav" type="button" onclick="logNextMiniNext()">›</button>
+          </div>
+          <div class="book-mini-week">
+            <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
+          </div>
+          <div class="book-mini-grid" id="log-next-mini-grid"></div>
+          <div class="book-selected-date" id="log-next-selected-date">Pick a date for next activity</div>
+        </div>
       </div>
       <button class="btn btn-primary btn-block btn-lg" onclick="saveLog()">
         <span style="font-style:normal;">✓</span> Save & Log
@@ -843,6 +856,64 @@ function initApp() {
   });
 }
 
+
+// ── RANDY V10: FOLLOW-UPS TODAY FIX ────────────────────────────────
+// Populates the Follow-Ups Today card from today's scheduled calendar items.
+// Includes calls, follow-ups, demos, meetings, and appointments scheduled for today.
+function renderFollowUpsToday() {
+  var list = document.getElementById('followup-list');
+  var countEl = document.getElementById('followup-count');
+  if (!list) return;
+
+  var today = (typeof isoDate === 'function') ? isoDate(new Date()) : new Date().toISOString().split('T')[0];
+  var events = (CAL_EVENTS || []).filter(function(e){ return e && e.date === today; });
+
+  events.sort(function(a,b){
+    var at = eventStartMinutes(a); if (at === null) at = 9999;
+    var bt = eventStartMinutes(b); if (bt === null) bt = 9999;
+    return at - bt;
+  });
+
+  if (countEl) {
+    countEl.textContent = events.length ? events.length : '';
+    countEl.style.display = events.length ? 'inline-flex' : 'none';
+  }
+
+  if (!events.length) {
+    list.innerHTML = '<div class="empty" style="padding:20px"><p>No calls or appointments scheduled for today</p></div>';
+    return;
+  }
+
+  var iconMap = {call:'📞',follow:'⏰',demo:'🖥',meeting:'👥',deadline:'⚠️',appointment:'📅'};
+  var colorMap = {call:['#dcfce7','#15803d'],follow:['#fef3c7','#b45309'],demo:['#dbeafe','#1d4ed8'],meeting:['#ede9fe','#6d28d9'],deadline:['#fee2e2','#b91c1c'],appointment:['#f3f4f6','#6b7280']};
+
+  list.innerHTML = '';
+  events.forEach(function(e){
+    var colors = colorMap[e.type] || colorMap.appointment;
+    var label = (e.time || e.start || '').trim() || 'Today';
+    var title = e.title || e.contact || 'Scheduled Activity';
+    var sub = [];
+    if (e.contact) sub.push(e.contact);
+    if (e.company) sub.push(e.company);
+    if (e.notes) sub.push(String(e.notes).substr(0,42) + (String(e.notes).length > 42 ? '…' : ''));
+
+    var row = document.createElement('div');
+    row.className = 'list-item';
+    row.style.cursor = 'pointer';
+    row.innerHTML = '<div class="avatar avatar-sm" style="background:'+colors[0]+';color:'+colors[1]+'">'+(iconMap[e.type] || '📅')+'</div>'
+      + '<div class="item-main">'
+        + '<div class="item-name">'+title+'</div>'
+        + '<div class="item-sub">'+(sub.length ? sub.join(' · ') : 'Scheduled for today')+'</div>'
+      + '</div>'
+      + '<div class="item-right"><div class="item-right-label">'+label+'</div></div>';
+    row.addEventListener('click', function(){
+      if (typeof openCalEvent === 'function') openCalEvent(e.id);
+      else if (typeof editCalEvent === 'function') editCalEvent(e.id);
+    });
+    list.appendChild(row);
+  });
+}
+
 function updateDashboardMetrics() {
   var active   = DEALS.filter(function(d){ return d.stage !== 'Won' && d.stage !== 'Lost'; });
   var total    = active.reduce(function(s,d){ return s + (Number(d.value)||0); }, 0);
@@ -915,6 +986,7 @@ function updateDashboardMetrics() {
     });
   }
   updateTodayFocus();
+  renderFollowUpsToday();
 }
 
 function loadFromSheets(cb) {
@@ -1716,6 +1788,141 @@ function filterActivity(val) { renderActivity(val); }
 // ── LOG SHEET ────────────────────────────────────────────────────────
 var _logType = 'call';
 
+var _selectedNextAction = '';
+var _logNextPickerYear = null;
+var _logNextPickerMonth = null;
+
+function resetNextActionPicker() {
+  _selectedNextAction = '';
+  document.querySelectorAll('.build6-next-btn').forEach(function(b){ b.classList.remove('selected'); });
+  var dateEl = document.getElementById('log-next-date');
+  var mini = document.getElementById('log-next-mini');
+  if (dateEl) dateEl.value = '';
+  if (mini) mini.style.display = 'none';
+}
+
+function selectNextAction(btn) {
+  hapticTap();
+  document.querySelectorAll('.build6-next-btn').forEach(function(b){ b.classList.remove('selected'); });
+  btn.classList.add('selected');
+  _selectedNextAction = btn.dataset.next || '';
+  var mini = document.getElementById('log-next-mini');
+  var dateEl = document.getElementById('log-next-date');
+  if (!_selectedNextAction) {
+    if (dateEl) dateEl.value = '';
+    if (mini) mini.style.display = 'none';
+    renderLogNextMiniCalendar();
+    return;
+  }
+  if (mini) mini.style.display = 'block';
+  if (dateEl && !dateEl.value) {
+    var tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    dateEl.value = isoDate(tomorrow);
+  }
+  setLogNextPickerFromDate(dateEl ? dateEl.value : isoDate(new Date()));
+}
+
+function setLogNextPickerFromDate(ds) {
+  var d = ds ? new Date(ds + 'T12:00:00') : new Date();
+  if (isNaN(d)) d = new Date();
+  _logNextPickerYear = d.getFullYear();
+  _logNextPickerMonth = d.getMonth();
+  renderLogNextMiniCalendar();
+}
+
+function logNextMiniPrev() {
+  hapticTap();
+  if (_logNextPickerYear === null) setLogNextPickerFromDate((document.getElementById('log-next-date')||{}).value || isoDate(new Date()));
+  _logNextPickerMonth--;
+  if (_logNextPickerMonth < 0) { _logNextPickerMonth = 11; _logNextPickerYear--; }
+  renderLogNextMiniCalendar();
+}
+
+function logNextMiniNext() {
+  hapticTap();
+  if (_logNextPickerYear === null) setLogNextPickerFromDate((document.getElementById('log-next-date')||{}).value || isoDate(new Date()));
+  _logNextPickerMonth++;
+  if (_logNextPickerMonth > 11) { _logNextPickerMonth = 0; _logNextPickerYear++; }
+  renderLogNextMiniCalendar();
+}
+
+function selectLogNextMiniDate(ds) {
+  hapticTap();
+  var dateEl = document.getElementById('log-next-date');
+  if (dateEl) dateEl.value = ds;
+  var picked = new Date(ds + 'T12:00:00');
+  _logNextPickerYear = picked.getFullYear();
+  _logNextPickerMonth = picked.getMonth();
+  renderLogNextMiniCalendar();
+}
+
+function renderLogNextMiniCalendar() {
+  var titleEl = document.getElementById('log-next-mini-title');
+  var gridEl = document.getElementById('log-next-mini-grid');
+  var selectedEl = document.getElementById('log-next-selected-date');
+  var dateInput = document.getElementById('log-next-date');
+  if (!titleEl || !gridEl || !dateInput) return;
+  if (_logNextPickerYear === null) setLogNextPickerFromDate(dateInput.value || isoDate(new Date()));
+  var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  titleEl.textContent = months[_logNextPickerMonth] + ' ' + _logNextPickerYear;
+  var first = new Date(_logNextPickerYear, _logNextPickerMonth, 1).getDay();
+  var days = new Date(_logNextPickerYear, _logNextPickerMonth + 1, 0).getDate();
+  var todayStr = isoDate(new Date());
+  var selected = dateInput.value;
+  var html = '';
+  for (var i=0; i<first; i++) html += '<button class="book-mini-day empty" type="button" disabled></button>';
+  for (var d=1; d<=days; d++) {
+    var ds = _logNextPickerYear + '-' + String(_logNextPickerMonth + 1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+    var count = CAL_EVENTS.filter(function(e){ return e.date === ds; }).length;
+    var loadClass = count >= 6 ? ' busy-6' : count >= 3 ? ' busy-3' : count > 0 ? ' busy-1' : '';
+    var selectedClass = ds === selected ? ' selected' : '';
+    var todayClass = ds === todayStr ? ' today' : '';
+    html += '<button class="book-mini-day'+loadClass+selectedClass+todayClass+'" type="button" onclick="selectLogNextMiniDate(\''+ds+'\')">'
+      + '<span class="num">'+d+'</span>'
+      + (count ? '<span class="book-mini-dot"></span><span class="book-mini-load">'+count+'</span>' : '')
+      + '</button>';
+  }
+  gridEl.innerHTML = html;
+  if (selectedEl) {
+    if (selected) {
+      var sd = new Date(selected + 'T12:00:00');
+      selectedEl.textContent = 'Next activity date: ' + months[sd.getMonth()] + ' ' + sd.getDate() + ', ' + sd.getFullYear();
+    } else {
+      selectedEl.textContent = 'Pick a date for next activity';
+    }
+  }
+}
+
+function nextActionType(action) {
+  var a = String(action || '').toLowerCase();
+  if (a.indexOf('demo') > -1) return 'demo';
+  if (a.indexOf('proposal') > -1) return 'deadline';
+  if (a.indexOf('call') > -1) return 'call';
+  return 'follow';
+}
+
+function createNextActionEvent(contact, company, notes) {
+  var nextDateEl = document.getElementById('log-next-date');
+  var nextDate = nextDateEl ? nextDateEl.value : '';
+  if (!_selectedNextAction || !nextDate) return;
+  var ev = {
+    id: 'next-' + Date.now(),
+    date: nextDate,
+    title: _selectedNextAction + (contact ? ' - ' + contact : ''),
+    type: nextActionType(_selectedNextAction),
+    time: '',
+    contact: contact || '',
+    company: company || '',
+    notes: notes || ''
+  };
+  CAL_EVENTS.push(ev);
+  sheetsAPI('saveCalEvent', {event: ev}, function(){});
+  updateNavBadges();
+  updateTodayFocus();
+  if (_currentTab === 'calendar') calRender();
+}
+
 function openLogSheet(contact, company) {
   if (contact) document.getElementById('log-contact').value = contact;
   else document.getElementById('log-contact').value = '';
@@ -1724,6 +1931,7 @@ function openLogSheet(contact, company) {
   document.getElementById('log-notes').value = '';
   // Reset type to call
   selectLogType(document.querySelector('.log-type-btn[data-type="call"]'));
+  resetNextActionPicker();
   openSheet('log-sheet');
 }
 
@@ -1770,6 +1978,7 @@ function saveLog() {
     summary: (outcome?'['+outcome+'] ':'')+notes,
     by: CURRENT_SESSION ? CURRENT_SESSION.fullName : 'User'
   };
+  createNextActionEvent(contact, company, notes);
   sheetsAPI('addActivity',{entry:entry},function(){
     _offlineActivity.unshift(entry);
     ALL_ACTIVITY.unshift(entry);
@@ -1778,7 +1987,7 @@ function saveLog() {
     else updateDashboardMetrics(); // always refresh so new activity shows on top
   });
   closeSheet('log-sheet');
-  showToast('Activity logged ✓');
+  showToast(_selectedNextAction ? 'Activity logged + next action set ✓' : 'Activity logged ✓');
 }
 
 // ── BOOKING ──────────────────────────────────────────────────────────
@@ -2019,6 +2228,7 @@ function saveBooking() {
   calSelectedDate = date;
   if (_currentTab==='calendar') calRender();
   updateTodayFocus();
+  renderFollowUpsToday();
   closeSheet('book-sheet');
   showToast(_editingEventId ? 'Appointment updated ✓' : 'Appointment saved ✓');
   _editingEventId = null;
