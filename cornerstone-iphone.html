@@ -326,12 +326,18 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
       <div class="metrics-grid" style="grid-template-columns:1fr 1fr">
         <div class="metric">
           <div class="metric-label">Total Value</div>
-          <div class="metric-value" id="pipe-total-val">$847K</div>
+          <div class="metric-value" id="pipe-total-val">$0</div>
         </div>
         <div class="metric">
           <div class="metric-label">Active Deals</div>
-          <div class="metric-value" id="pipe-deal-count">12</div>
+          <div class="metric-value" id="pipe-deal-count">0</div>
         </div>
+      </div>
+      <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none">
+        <button class="pipe-sort-btn active" data-sort="stage" onclick="setPipeSort('stage',this)" style="flex-shrink:0;padding:6px 14px;border-radius:20px;border:1.5px solid var(--blue);background:var(--blue);color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">By Stage</button>
+        <button class="pipe-sort-btn" data-sort="value" onclick="setPipeSort('value',this)" style="flex-shrink:0;padding:6px 14px;border-radius:20px;border:1.5px solid var(--border);background:#fff;color:var(--gray);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">By Value</button>
+        <button class="pipe-sort-btn" data-sort="prob" onclick="setPipeSort('prob',this)" style="flex-shrink:0;padding:6px 14px;border-radius:20px;border:1.5px solid var(--border);background:#fff;color:var(--gray);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">By Probability</button>
+        <button class="pipe-sort-btn" data-sort="hot" onclick="setPipeSort('hot',this)" style="flex-shrink:0;padding:6px 14px;border-radius:20px;border:1.5px solid var(--border);background:#fff;color:var(--gray);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🔥 Hot First</button>
       </div>
       <div id="pipeline-stages"></div>
     </div>
@@ -425,7 +431,7 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
       </div>
       <div class="form-group">
         <label class="form-label">Notes</label>
-        <textarea class="form-input form-textarea" id="log-notes" placeholder="What happened? Key takeaways, next steps…"></textarea>
+        <textarea class="form-input form-textarea" id="log-notes" placeholder="Optional — key takeaways, next steps…"></textarea>
       </div>
       <button class="btn btn-primary btn-block btn-lg" onclick="saveLog()">
         <span style="font-style:normal;">✓</span> Save & Log
@@ -676,14 +682,32 @@ function updateDashboardMetrics() {
     ALL_ACTIVITY.forEach(function(e) {
       var name = e.contact || '';
       if (!name) return;
-      var ts = Number(e.ts) || 0;
-      if (!contactMap[name] || ts > contactMap[name].ts) {
-        contactMap[name] = e; // keep most recent entry per contact
+      // Always parse the date string — more reliable than ts from CSV
+      var ts = 0;
+      if (e.date) {
+        var months = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+        var clean = e.date.replace(',','').trim();
+        var parts = clean.split(/\s+/);
+        if (parts.length === 3 && months[parts[0]] !== undefined) {
+          // "May 14 2026" format
+          ts = new Date(Number(parts[2]), months[parts[0]], Number(parts[1])).getTime();
+        } else if (clean.match(/^\d{4}-\d{2}-\d{2}/)) {
+          // "2026-05-14" ISO format
+          ts = new Date(clean.substr(0,10)).getTime();
+        } else {
+          ts = new Date(clean).getTime() || 0;
+        }
+      }
+      // Fall back to ts field only if date parse failed
+      if (!ts) ts = Number(e.ts) || 0;
+      e._sortTs = ts;
+      if (!contactMap[name] || ts > (contactMap[name]._sortTs||0)) {
+        contactMap[name] = e;
       }
     });
-    // Sort contacts by most recent activity, newest first
+    // Sort newest first
     var recentContacts = Object.values(contactMap).sort(function(a,b){
-      return (Number(b.ts)||0) - (Number(a.ts)||0);
+      return (b._sortTs||0) - (a._sortTs||0);
     });
     actEl.innerHTML = '';
     recentContacts.slice(0,20).forEach(function(e){
@@ -854,70 +878,190 @@ function renderContacts(filter) {
 function filterContacts(val) { renderContacts(val); }
 
 function openContactDetail(name) {
-  var c = CONTACTS.find(function(x){ return x.name===name; }) || {name:name,initials:name[0],bg:'#f3f4f6',fg:'#6b7280',company:'—'};
+  var nameTrimmed = (name||'').trim();
   _prevTab = _currentTab;
 
-  // Load recent log
-  sheetsAPI('getActivity',{contact:name},function(data){
-    var log = (data&&data.ok) ? (data.activity||[]) : _offlineActivity.filter(function(e){return e.contact===name;});
-    renderContactDetail(c, log);
-  });
-
-  renderContactDetail(c, []);
+  // Switch screen immediately
   document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
   document.getElementById('screen-contact-detail').classList.add('active');
-  document.getElementById('header-title').textContent = c.name;
+  document.getElementById('header-title').textContent = nameTrimmed;
+
+  // Look up contact - re-check CONTACTS array at call time (may have loaded since app start)
+  function getContact() {
+    return CONTACTS.find(function(x){ return (x.name||'').trim() === nameTrimmed; })
+        || CONTACTS.find(function(x){ return (x.name||'').trim().toLowerCase() === nameTrimmed.toLowerCase(); })
+        || null;
+  }
+
+  var c = getContact();
+
+  // Show placeholder while loading
+  if (!c) {
+    var ini = nameTrimmed.split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().substr(0,2);
+    c = {name: nameTrimmed, initials: ini, bg: '#f3f4f6', fg: '#374151', company: ''};
+  }
+
+  // Render immediately with what we have
+  renderContactDetail(c, []);
+
+  // Load activity and re-render with full data
+  sheetsAPI('getActivity', {contact: nameTrimmed}, function(data) {
+    var log = (data && data.ok) ? (data.activity||[]) : _offlineActivity.filter(function(e){return e.contact===nameTrimmed;});
+    // Re-lookup contact in case CONTACTS loaded while we were waiting
+    var cFresh = getContact() || c;
+    renderContactDetail(cFresh, log);
+  });
 }
 
 function renderContactDetail(c, log) {
-  var typeColors = {call:['#dcfce7','#15803d'],email:['#dbeafe','#1d4ed8'],meeting:['#ede9fe','#6d28d9'],voicemail:['#fef3c7','#b45309'],note:['#f3f4f6','#6b7280'],demo:['#dbeafe','#1d4ed8']};
-
-  var logHTML = log.length ? log.slice(0,10).map(function(e){
-    var tc = typeColors[e.type]||typeColors.note;
-    return '<div class="log-item">'
-      + '<div class="log-icon" style="background:'+tc[0]+'"><span>•</span></div>'
-      + '<div class="log-body"><div class="log-summary">'+e.summary+'</div><div class="log-meta">'+e.date+' · '+(e.by||'')+'</div></div>'
-      + '</div>';
-  }).join('') : '<div class="empty" style="padding:20px"><p>No activity logged yet</p></div>';
-
   _detailContact = c;
-  document.getElementById('contact-detail-content').innerHTML =
-    '<button class="btn" style="margin-bottom:12px" onclick="goBack()"><span style="font-style:normal;">←</span> Back</button>'
+  var typeColors = {call:['#dcfce7','#15803d'],email:['#dbeafe','#1d4ed8'],meeting:['#ede9fe','#6d28d9'],voicemail:['#fef3c7','#b45309'],note:['#f3f4f6','#6b7280'],demo:['#dbeafe','#1d4ed8']};
+  var iconMap    = {call:'📞',email:'✉',meeting:'🤝',voicemail:'📬',note:'📝',demo:'🖥'};
 
-    + '<div class="contact-hero">'
-      + '<div class="avatar" style="background:'+c.bg+';color:'+c.fg+'">'+c.initials+'</div>'
-      + '<div class="contact-hero-name">'+c.name+'</div>'
-      + '<div class="contact-hero-sub">'+(c.title||'')+(c.company?' · '+c.company:'')+'</div>'
-      + '<div style="display:flex;gap:8px;margin-top:14px">'
-        + (c.phone||c.mobile ? '<a href="tel:'+(c.phone||c.mobile||'').replace(/[^0-9+]/g,'')+'" class="btn btn-green" style="flex:1"><span style="font-style:normal;">📞</span> Call</a>' : '')
-        + (c.email ? '<a href="mailto:'+c.email+'" class="btn" style="flex:1;border-color:var(--blue-mid);color:var(--blue);background:var(--blue-light)"><span style="font-style:normal;">✉</span> Email</a>' : '')
-      + '</div>'
-      + '<button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="openLogSheet(\''+c.name.replace(/'/g,"\\'")+'\',\''+((c.company||'').replace(/'/g,"\\'"))+'\')">'
-        + '<span style="font-style:normal;">✏</span> Log Activity'
-      + '</button>'
-      + '<button class="btn" style="width:100%;margin-top:8px" onclick="openEditContact(_detailContact.name)">✎ Edit Contact</button>'
-    + '</div>'
+  var root = document.getElementById('contact-detail-content');
+  root.innerHTML = '';
 
-    + '<div class="card">'
-      + '<div class="card-header"><span class="card-title">Contact Info</span></div>'
-      + '<div class="card-body" style="padding:4px 0">'
-        + infoRow('Phone', c.phone)
-        + infoRow('Mobile', c.mobile)
-        + infoRow('Email', c.email)
-        + infoRow('Prefers', c.prefer)
-        + infoRow('Role', c.role)
-        + (c.company ? (function(co){
-          return '<div class="info-row" style="padding:12px 16px">'
-            + '<span class="info-label">Company</span>'
-            + '<button onclick="openCompanyContacts(_detailContact.company)" style="background:none;border:none;font-size:14px;font-weight:500;color:var(--blue);cursor:pointer;font-family:inherit">'+co+' 👥</button>'
-            + '</div>';
-        })(c.company) : '')
-      + '</div>'
-    + '</div>'
+  // ── Back button ──────────────────────────────────────────────────
+  var backBtn = document.createElement('button');
+  backBtn.className = 'btn';
+  backBtn.style.marginBottom = '12px';
+  backBtn.textContent = '← Back';
+  backBtn.addEventListener('click', goBack);
+  root.appendChild(backBtn);
 
-    + '<div class="section-label">Recent Activity</div>'
-    + '<div class="card"><div id="contact-log-list">'+logHTML+'</div></div>';
+  // ── Hero card ────────────────────────────────────────────────────
+  var hero = document.createElement('div');
+  hero.className = 'contact-hero';
+  hero.innerHTML = '<div class="avatar" style="background:'+(c.bg||'#f3f4f6')+';color:'+(c.fg||'#374151')+'">'+(c.initials||'?')+'</div>'
+    + '<div class="contact-hero-name">'+c.name+'</div>'
+    + '<div class="contact-hero-sub">'+(c.title||'')+(c.company?' · '+c.company:'')+'</div>';
+
+  // Call + Email buttons
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px;margin-top:14px;width:100%';
+  if (c.phone || c.mobile) {
+    var callBtn = document.createElement('button');
+    callBtn.className = 'btn btn-green';
+    callBtn.style.flex = '1';
+    callBtn.innerHTML = '📞 Call';
+    callBtn.addEventListener('click', function(){ openCallPicker(_detailContact); });
+    btnRow.appendChild(callBtn);
+  }
+  if (c.email) {
+    var emailLink = document.createElement('a');
+    emailLink.href = 'mailto:' + c.email;
+    emailLink.className = 'btn';
+    emailLink.style.cssText = 'flex:1;border-color:var(--blue-mid);color:var(--blue);background:var(--blue-light)';
+    emailLink.innerHTML = '✉ Email';
+    btnRow.appendChild(emailLink);
+  }
+  hero.appendChild(btnRow);
+
+  // Log Activity button
+  var logBtn = document.createElement('button');
+  logBtn.className = 'btn btn-primary';
+  logBtn.style.cssText = 'width:100%;margin-top:8px';
+  logBtn.innerHTML = '✏ Log Activity';
+  logBtn.addEventListener('click', function(){ openLogSheet(_detailContact.name, _detailContact.company||''); });
+  hero.appendChild(logBtn);
+
+  // Edit Contact button
+  var editBtn = document.createElement('button');
+  editBtn.className = 'btn';
+  editBtn.style.cssText = 'width:100%;margin-top:8px';
+  editBtn.textContent = '✎ Edit Contact';
+  editBtn.addEventListener('click', function(){ openEditContact(_detailContact.name); });
+  hero.appendChild(editBtn);
+
+  root.appendChild(hero);
+
+  // ── Contact Info card ────────────────────────────────────────────
+  var infoCard = document.createElement('div');
+  infoCard.className = 'card';
+  var infoHeader = document.createElement('div');
+  infoHeader.className = 'card-header';
+  infoHeader.innerHTML = '<span class="card-title">Contact Info</span>';
+  infoCard.appendChild(infoHeader);
+  var infoBody = document.createElement('div');
+  infoBody.style.padding = '4px 0';
+
+  function addInfoRow(label, val) {
+    if (!val) return;
+    var row = document.createElement('div');
+    row.className = 'info-row';
+    row.style.padding = '12px 16px';
+    row.innerHTML = '<span class="info-label">'+label+'</span><span class="info-value">'+val+'</span>';
+    infoBody.appendChild(row);
+  }
+
+  addInfoRow('Phone',   c.phone   || '');
+  addInfoRow('Mobile',  c.mobile  || '');
+  addInfoRow('Email',   c.email   || '');
+  addInfoRow('Title',   c.title   || '');
+  addInfoRow('Prefers', c.prefer  || '');
+  addInfoRow('Role',    c.role    || '');
+
+  // Address
+  var addrParts = [];
+  if (c.address) addrParts.push(c.address);
+  var cityState = [c.city, c.state].filter(Boolean).join(', ');
+  if (cityState) addrParts.push(cityState + (c.zip ? ' ' + c.zip : ''));
+  if (addrParts.length) addInfoRow('Address', addrParts.join(', '));
+
+  // Company — tappable
+  if (c.company) {
+    var coRow = document.createElement('div');
+    coRow.className = 'info-row';
+    coRow.style.padding = '12px 16px';
+    coRow.innerHTML = '<span class="info-label">Company</span>';
+    var coBtn2 = document.createElement('button');
+    coBtn2.style.cssText = 'background:none;border:none;font-size:14px;font-weight:500;color:var(--blue);cursor:pointer;font-family:inherit';
+    coBtn2.textContent = c.company + ' 👥';
+    coBtn2.addEventListener('click', function(){ openCompanyContacts(_detailContact.company); });
+    coRow.appendChild(coBtn2);
+    infoBody.appendChild(coRow);
+  }
+
+  infoCard.appendChild(infoBody);
+  root.appendChild(infoCard);
+
+  // ── Activity Log ─────────────────────────────────────────────────
+  var actLabel = document.createElement('div');
+  actLabel.className = 'section-label';
+  actLabel.textContent = 'Recent Activity';
+  root.appendChild(actLabel);
+
+  var actCard = document.createElement('div');
+  actCard.className = 'card';
+  var actBody = document.createElement('div');
+  actBody.id = 'contact-log-list';
+
+  if (!log.length) {
+    actBody.innerHTML = '<div class="empty" style="padding:20px"><p>No activity logged yet</p></div>';
+  } else {
+    log.slice(0,15).forEach(function(e) {
+      var tc = typeColors[e.type] || typeColors.note;
+      var dateDisplay = e.date || '';
+      if (dateDisplay.indexOf('T') > -1) {
+        var d = new Date(dateDisplay);
+        var mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        dateDisplay = isNaN(d) ? dateDisplay : mo[d.getMonth()]+' '+d.getDate()+', '+d.getFullYear();
+      }
+      var item = document.createElement('div');
+      item.className = 'log-item';
+      item.innerHTML = '<div class="log-icon" style="background:'+tc[0]+';font-size:16px;display:flex;align-items:center;justify-content:center">'+(iconMap[e.type]||'📝')+'</div>'
+        + '<div class="log-body">'
+          + '<div class="log-summary">'+(e.summary||'')+'</div>'
+          + '<div class="log-meta">'+dateDisplay+(e.by?' · '+e.by:'')+'</div>'
+        + '</div>';
+      actBody.appendChild(item);
+    });
+  }
+
+  actCard.appendChild(actBody);
+  root.appendChild(actCard);
 }
+
 
 function infoRow(label, val) {
   if (!val) return '';
@@ -931,41 +1075,79 @@ function infoRow(label, val) {
 var DEALS = [];
 
 var STAGES = ['Prospecting','Discovery','Demo','Proposal','Closing','Won'];
+var _pipeSort = 'stage';
+
+function setPipeSort(sort, btn) {
+  _pipeSort = sort;
+  document.querySelectorAll('.pipe-sort-btn').forEach(function(b){
+    b.style.background   = '#fff';
+    b.style.color        = 'var(--gray)';
+    b.style.borderColor  = 'var(--border)';
+  });
+  btn.style.background  = 'var(--blue)';
+  btn.style.color       = '#fff';
+  btn.style.borderColor = 'var(--blue)';
+  renderPipeline();
+}
 
 function renderPipeline() {
   var active = DEALS.filter(function(d){ return d.stage!=='Won'&&d.stage!=='Lost'; });
-  var total = active.reduce(function(s,d){ return s+d.value; },0);
+  var total  = active.reduce(function(s,d){ return s+(Number(d.value)||0); },0);
   document.getElementById('pipe-total-val').textContent = '$'+(total/1000).toFixed(0)+'K';
   document.getElementById('pipe-deal-count').textContent = active.length;
 
+  function dealRowHTML(d) {
+    var indColor  = d.status==='hot'?'var(--green)':d.status==='stuck'?'var(--red)':d.status==='warm'?'var(--amber)':'var(--border)';
+    var stageTag  = (d.stage && _pipeSort!=='stage') ? ' &middot; '+d.stage : '';
+    var metaText  = (d.company||'') + (d.prob?' &middot; '+d.prob+'%':'') + stageTag;
+    return '<div class="deal-row" data-deal-id="'+String(d.id)+'" style="cursor:pointer">'
+      + '<div class="deal-indicator" style="background:'+indColor+'"></div>'
+      + '<div class="deal-info">'
+        + '<div class="deal-name">'+d.name+'</div>'
+        + '<div class="deal-meta">'+metaText+'</div>'
+      + '</div>'
+      + '<div class="deal-value">$'+(Number(d.value)/1000).toFixed(0)+'K</div>'
+      + '</div>';
+  }
+
   var html = '';
-  STAGES.forEach(function(stage){
-    var deals = DEALS.filter(function(d){ return d.stage===stage; });
-    if (!deals.length) return;
-    var stageTotal = deals.reduce(function(s,d){ return s+d.value; },0);
-    html += '<div class="stage-section" style="margin-bottom:10px">'
-      + '<div class="stage-header-row">'
-        + '<span class="stage-name">'+stage+'</span>'
-        + '<span class="stage-total">$'+(stageTotal/1000).toFixed(0)+'K · '+deals.length+' deal'+(deals.length!==1?'s':'')+'</span>'
-      + '</div>';
-    deals.forEach(function(d){
-      var indColor = d.status==='hot'?'var(--green)':d.status==='stuck'?'var(--red)':d.status==='warm'?'var(--amber)':'var(--border)';
-      html += '<div class="deal-row" onclick="openDealSheet('+d.id+')">'
-        + '<div class="deal-indicator" style="background:'+indColor+'"></div>'
-        + '<div class="deal-info">'
-          + '<div class="deal-name">'+d.name+'</div>'
-          + '<div class="deal-meta">'+d.company+' · '+d.prob+'%</div>'
-        + '</div>'
-        + '<div class="deal-value">$'+(d.value/1000).toFixed(0)+'K</div>'
-      + '</div>';
+  if (_pipeSort === 'stage') {
+    STAGES.forEach(function(stage){
+      var deals = DEALS.filter(function(d){ return d.stage===stage; });
+      if (!deals.length) return;
+      var stageTotal = deals.reduce(function(s,d){ return s+(Number(d.value)||0); },0);
+      html += '<div class="stage-section" style="margin-bottom:10px">'
+        + '<div class="stage-header-row">'
+          + '<span class="stage-name">'+stage+'</span>'
+          + '<span class="stage-total">$'+(stageTotal/1000).toFixed(0)+'K · '+deals.length+' deal'+(deals.length!==1?'s':'')+'</span>'
+        + '</div>';
+      deals.forEach(function(d){ html += dealRowHTML(d); });
+      html += '</div>';
     });
+  } else {
+    var sorted = active.slice();
+    if (_pipeSort==='value') sorted.sort(function(a,b){ return (Number(b.value)||0)-(Number(a.value)||0); });
+    if (_pipeSort==='prob')  sorted.sort(function(a,b){ return (Number(b.prob)||0)-(Number(a.prob)||0); });
+    if (_pipeSort==='hot') {
+      var order = {hot:0,warm:1,'':2,stuck:3};
+      sorted.sort(function(a,b){ return (order[a.status||'']||2)-(order[b.status||'']||2); });
+    }
+    html += '<div class="stage-section">';
+    sorted.forEach(function(d){ html += dealRowHTML(d); });
     html += '</div>';
-  });
-  document.getElementById('pipeline-stages').innerHTML = html;
+  }
+  var stagesEl = document.getElementById('pipeline-stages');
+  stagesEl.innerHTML = html;
+  // Event delegation for deal clicks
+  stagesEl.onclick = function(e) {
+    var row = e.target.closest('[data-deal-id]');
+    if (row) openDealSheet(row.dataset.dealId);
+  };
 }
 
+
 function openDealSheet(id) {
-  var d = DEALS.find(function(x){ return x.id===id; });
+  var d = DEALS.find(function(x){ return String(x.id)===String(id); });
   if (!d) return;
   _currentDealId = id;
   document.getElementById('deal-sheet-title').textContent = d.name;
@@ -1267,13 +1449,14 @@ function saveLog() {
   var company = document.getElementById('log-company').value.trim();
   var notes   = document.getElementById('log-notes').value.trim();
   var outcome = document.getElementById('log-outcome').value;
-  if (!notes) { showToast('Please add notes'); return; }
+  // Notes optional — use outcome as summary if no notes entered
+  if (!notes) notes = outcome || 'Activity logged';
   var now = new Date();
   var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   var dateStr = months[now.getMonth()]+' '+now.getDate()+', '+now.getFullYear();
   var entry = {
     contact: contact, company: company,
-    type: _logType, date: dateStr, ts: Date.now(),
+    type: _logType, date: dateStr, ts: String(Date.now()),
     summary: (outcome?'['+outcome+'] ':'')+notes,
     by: CURRENT_SESSION ? CURRENT_SESSION.fullName : 'User'
   };
@@ -1281,6 +1464,8 @@ function saveLog() {
     _offlineActivity.unshift(entry);
     ALL_ACTIVITY.unshift(entry);
     if (_currentTab==='activity') displayActivity(ALL_ACTIVITY.slice(0,50));
+    if (_currentTab==='dashboard') updateDashboardMetrics();
+    else updateDashboardMetrics(); // always refresh so new activity shows on top
   });
   closeSheet('log-sheet');
   showToast('Activity logged ✓');
@@ -1367,10 +1552,14 @@ function openEditContact(name) {
   document.getElementById('ac-name').value    = c.name    || '';
   document.getElementById('ac-title').value   = c.title   || '';
   document.getElementById('ac-company').value = c.company || '';
-  document.getElementById('ac-phone').value   = c.phone   || '';
-  document.getElementById('ac-mobile').value  = c.mobile  || '';
+  document.getElementById('ac-phone').value   = c.phone  ? formatPhoneVal(c.phone)  : '';
+  document.getElementById('ac-mobile').value  = c.mobile ? formatPhoneVal(c.mobile) : '';
   document.getElementById('ac-email').value   = c.email   || '';
   document.getElementById('ac-notes').value   = c.notes   || '';
+  document.getElementById('ac-address').value = c.address || '';
+  document.getElementById('ac-city').value    = c.city    || '';
+  document.getElementById('ac-state').value   = c.state   || '';
+  document.getElementById('ac-zip').value     = c.zip     || '';
   var roleEl = document.getElementById('ac-role');
   var prefEl = document.getElementById('ac-prefer');
   if (roleEl)   for(var i=0;i<roleEl.options.length;i++)   if(roleEl.options[i].value===c.role)   roleEl.selectedIndex=i;
@@ -1430,6 +1619,92 @@ function openCompanyContacts(companyName) {
   openSheet('co-contacts-ov');
 }
 
+
+function openCallPicker(c) {
+  if (!c) return;
+  var numbers = [];
+  if (c.phone)  numbers.push({label: 'Office',  number: c.phone});
+  if (c.mobile) numbers.push({label: 'Mobile',  number: c.mobile});
+
+  // If only one number, dial it directly
+  if (numbers.length === 1) {
+    window.location.href = 'tel:' + numbers[0].number.replace(/[^0-9+]/g,'');
+    return;
+  }
+
+  // Show picker sheet
+  var ov = document.getElementById('call-picker-ov');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.className = 'sheet-overlay';
+    ov.id = 'call-picker-ov';
+    ov.innerHTML = '<div class="sheet" style="padding-bottom:20px">'
+      + '<div class="sheet-handle"></div>'
+      + '<div class="sheet-header">'
+        + '<div class="sheet-title" id="call-picker-name">Call</div>'
+        + '<button class="sheet-close" id="call-picker-close" style="font-size:18px">✕</button>'
+      + '</div>'
+      + '<div class="sheet-body" id="call-picker-body"></div>'
+    + '</div>';
+    ov.addEventListener('click', function(e){ if(e.target===ov) closeSheet('call-picker-ov'); });
+    document.body.appendChild(ov);
+    document.getElementById('call-picker-close').addEventListener('click', function(){ closeSheet('call-picker-ov'); });
+  }
+
+  document.getElementById('call-picker-name').textContent = 'Call ' + c.name;
+  var body = document.getElementById('call-picker-body');
+  body.innerHTML = '';
+
+  numbers.forEach(function(n) {
+    var btn = document.createElement('a');
+    btn.href = 'tel:' + n.number.replace(/[^0-9+]/g,'');
+    btn.style.cssText = 'display:flex;align-items:center;gap:14px;padding:16px 0;border-bottom:1px solid #f3f4f6;text-decoration:none;color:var(--text)';
+    btn.innerHTML = '<div style="width:44px;height:44px;border-radius:50%;background:var(--green-light);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">📞</div>'
+      + '<div>'
+        + '<div style="font-size:16px;font-weight:600;color:var(--green)">' + n.number + '</div>'
+        + '<div style="font-size:13px;color:var(--gray);margin-top:2px">' + n.label + '</div>'
+      + '</div>'
+      + '<span style="margin-left:auto;font-size:22px;color:#d1d5db">›</span>';
+    btn.addEventListener('click', function(){ closeSheet('call-picker-ov'); });
+    body.appendChild(btn);
+  });
+
+  // Also add option to log a call
+  var logBtn = document.createElement('button');
+  logBtn.className = 'btn btn-block';
+  logBtn.style.marginTop = '12px';
+  logBtn.textContent = '✏ Log a Call Instead';
+  logBtn.addEventListener('click', function(){
+    closeSheet('call-picker-ov');
+    setTimeout(function(){ openLogSheet(c.name, c.company||''); }, 50);
+  });
+  body.appendChild(logBtn);
+
+  openSheet('call-picker-ov');
+}
+
+
+function formatPhone(input) {
+  var raw = input.value.replace(/\D/g, '').substr(0, 10);
+  var fmt = '';
+  if (raw.length === 0) { input.value = ''; return; }
+  if (raw.length <= 3) {
+    fmt = '(' + raw;
+  } else if (raw.length <= 6) {
+    fmt = '(' + raw.substr(0,3) + ') ' + raw.substr(3);
+  } else {
+    fmt = '(' + raw.substr(0,3) + ') ' + raw.substr(3,3) + '-' + raw.substr(6);
+  }
+  input.value = fmt;
+}
+
+function formatPhoneVal(val) {
+  if (!val) return '';
+  var raw = String(val).replace(/\D/g, '').substr(0, 10);
+  if (raw.length === 10) return '(' + raw.substr(0,3) + ') ' + raw.substr(3,3) + '-' + raw.substr(6);
+  return val; // return original if not 10 digits
+}
+
 // Init calendar
 calRender();
 
@@ -1473,6 +1748,10 @@ function saveNewContact() {
     role:      document.getElementById('ac-role').value||'Decision Maker',
     prefer:    document.getElementById('ac-prefer').value||'Call',
     notes:     document.getElementById('ac-notes').value||'',
+    address:   document.getElementById('ac-address').value||'',
+    city:      document.getElementById('ac-city').value||'',
+    state:     document.getElementById('ac-state').value||'',
+    zip:       document.getElementById('ac-zip').value||'',
     bg:        col[0], fg: col[1], initials: ini,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -1486,11 +1765,19 @@ function saveNewContact() {
   renderContacts();
   updateDashboardMetrics();
   closeSheet('add-contact-sheet');
-  ['ac-name','ac-title','ac-company','ac-phone','ac-mobile','ac-email','ac-notes'].forEach(function(id){
+  ['ac-name','ac-title','ac-company','ac-phone','ac-mobile','ac-email','ac-address','ac-city','ac-state','ac-zip','ac-notes'].forEach(function(id){
     var el = document.getElementById(id); if(el) el.value='';
   });
   var titleEl = document.querySelector('#add-contact-sheet .sheet-title');
   if (titleEl) titleEl.textContent = 'Add Contact';
+  // If we're viewing the contact detail screen, refresh it
+  if (isEdit && _detailContact && _detailContact.name.toLowerCase() === name.toLowerCase()) {
+    _detailContact = contact;
+    sheetsAPI('getActivity', {contact: contact.name}, function(data){
+      var log = (data && data.ok) ? (data.activity||[]) : [];
+      renderContactDetail(contact, log);
+    });
+  }
   showToast(isEdit ? 'Contact updated ✓' : 'Contact saved ✓');
 }
 
@@ -1573,11 +1860,11 @@ function saveNewCompany() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div class="form-group">
           <label class="form-label">Phone</label>
-          <input class="form-input" type="tel" id="ac-phone" placeholder="(555) 000-0000">
+          <input class="form-input" type="tel" id="ac-phone" placeholder="(555) 000-0000" oninput="formatPhone(this)" maxlength="14">
         </div>
         <div class="form-group">
           <label class="form-label">Mobile</label>
-          <input class="form-input" type="tel" id="ac-mobile" placeholder="(555) 000-0000">
+          <input class="form-input" type="tel" id="ac-mobile" placeholder="(555) 000-0000" oninput="formatPhone(this)" maxlength="14">
         </div>
       </div>
       <div class="form-group">
@@ -1602,6 +1889,24 @@ function saveNewCompany() {
             <option>Email</option>
             <option>Text</option>
           </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Address</label>
+        <input class="form-input" type="text" id="ac-address" placeholder="123 Main St">
+      </div>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px">
+        <div class="form-group">
+          <label class="form-label">City</label>
+          <input class="form-input" type="text" id="ac-city" placeholder="Chicago">
+        </div>
+        <div class="form-group">
+          <label class="form-label">State</label>
+          <input class="form-input" type="text" id="ac-state" placeholder="IL" maxlength="2">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Zip</label>
+          <input class="form-input" type="text" id="ac-zip" placeholder="60601" maxlength="5">
         </div>
       </div>
       <div class="form-group">
@@ -1730,10 +2035,3 @@ function saveNewCompany() {
 
 </body>
 </html>
-  // Wire buttons after render
-  setTimeout(function(){
-    var editBtn = document.getElementById('edit-contact-btn');
-    if (editBtn) editBtn.addEventListener('click', function(){ openEditContact(c.name); });
-    var coBtn = document.getElementById('co-link-btn');
-    if (coBtn) coBtn.addEventListener('click', function(){ openCompanyContacts(c.company); });
-  }, 50);
