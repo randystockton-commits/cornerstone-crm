@@ -27,10 +27,9 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
 
 /* ── APP SHELL ── */
 #app{display:flex;flex-direction:column;height:100%;height:100dvh}
-#status-bar{height:var(--safe-top);background:var(--blue);flex-shrink:0}
 
 /* ── HEADER ── */
-.header{background:var(--blue);color:#fff;padding:12px 16px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.header{background:var(--blue);color:#fff;padding:16px 16px 14px;padding-top:calc(16px + var(--safe-top));display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .header-title{font-size:18px;font-weight:700;letter-spacing:-.3px}
 .header-sub{font-size:12px;opacity:.7;margin-top:1px}
 .header-btn{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.15);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
@@ -215,8 +214,6 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
 </head>
 <body>
 
-<div id="status-bar"></div>
-
 <!-- LOGIN -->
 <div id="login-screen">
   <div class="login-card">
@@ -259,22 +256,22 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
       <div class="metrics-grid">
         <div class="metric">
           <div class="metric-label">Pipeline</div>
-          <div class="metric-value" id="db-pipeline">$847K</div>
-          <div class="metric-sub up">↑ $62K this week</div>
+          <div class="metric-value" id="db-pipeline">$0</div>
+          <div class="metric-sub" id="db-pipeline-sub"></div>
         </div>
         <div class="metric">
           <div class="metric-label">June Forecast</div>
-          <div class="metric-value" id="db-forecast">$124K</div>
-          <div class="metric-sub">vs $200K quota</div>
+          <div class="metric-value" id="db-forecast">$0</div>
+          <div class="metric-sub" id="db-forecast-sub">vs quota</div>
         </div>
         <div class="metric">
           <div class="metric-label">Total RMR</div>
-          <div class="metric-value" id="db-rmr">$28.4K</div>
-          <div class="metric-sub up">↑ $1.2K MTD</div>
+          <div class="metric-value" id="db-rmr">$0</div>
+          <div class="metric-sub" id="db-rmr-sub"></div>
         </div>
         <div class="metric">
           <div class="metric-label">Open Deals</div>
-          <div class="metric-value" id="db-deals">12</div>
+          <div class="metric-value" id="db-deals">0</div>
           <div class="metric-sub">in pipeline</div>
         </div>
       </div>
@@ -282,70 +279,24 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
       <!-- Follow-ups today -->
       <div class="card">
         <div class="card-header">
-          <span class="card-title"><span style="font-style:normal;color:var(--amber)">⏰</span> Follow-Ups Today</span>
-          <span class="tag tag-amber" id="followup-count">6 due</span>
+          <span class="card-title">⏰ Follow-Ups Today</span>
+          <span class="tag tag-amber" id="followup-count"></span>
         </div>
         <div id="followup-list">
-          <div class="list-item" onclick="openContactDetail('Mike Torres')">
-            <div class="avatar avatar-sm" style="background:#dbeafe;color:#1d4ed8">MT</div>
-            <div class="item-main">
-              <div class="item-name">Mike Torres</div>
-              <div class="item-sub">Call re: Proposal · Advanced Security Co.</div>
-            </div>
-            <span class="tag tag-red">14d</span>
-          </div>
-          <div class="list-item" onclick="openContactDetail('Sarah Lin')">
-            <div class="avatar avatar-sm" style="background:#dcfce7;color:#15803d">SL</div>
-            <div class="item-main">
-              <div class="item-name">Sarah Lin</div>
-              <div class="item-sub">Follow-up · Apex Alarm</div>
-            </div>
-            <span class="tag tag-amber">2d</span>
-          </div>
-          <div class="list-item" onclick="openContactDetail('Dana Hoffmann')">
-            <div class="avatar avatar-sm" style="background:#ede9fe;color:#6d28d9">DH</div>
-            <div class="item-main">
-              <div class="item-name">Dana Hoffmann</div>
-              <div class="item-sub">Send agreement · ProGuard Systems</div>
-            </div>
-            <span class="tag tag-green">Today</span>
-          </div>
+          <div class="empty" style="padding:20px"><p>No follow-ups — log a call to create one</p></div>
         </div>
       </div>
 
-      <!-- Who replied -->
+      <!-- Recent Activity -->
       <div class="card">
         <div class="card-header">
-          <span class="card-title"><span style="font-style:normal;color:var(--blue)">📥</span> Who Replied?</span>
-          <span class="tag tag-blue">4 new</span>
+          <span class="card-title">📋 Recent Activity</span>
         </div>
-        <div>
-          <div class="list-item" onclick="openContactDetail('Mike Torres')">
-            <div class="avatar avatar-sm" style="background:#dbeafe;color:#1d4ed8">MT</div>
-            <div class="item-main">
-              <div class="item-name">Mike Torres <span class="tag tag-blue" style="font-size:10px;margin-left:4px">replied</span></div>
-              <div class="item-sub">"Let's schedule time to discuss the migration…"</div>
-            </div>
-            <div class="item-right"><div class="item-right-label">12m</div></div>
-          </div>
-          <div class="list-item" onclick="openContactDetail('Sarah Lin')">
-            <div class="avatar avatar-sm" style="background:#dcfce7;color:#15803d">SL</div>
-            <div class="item-main">
-              <div class="item-name">Sarah Lin <span class="tag tag-green" style="font-size:10px;margin-left:4px">opened ×3</span></div>
-              <div class="item-sub">Q3 pricing deck opened 3× today</div>
-            </div>
-            <div class="item-right"><div class="item-right-label">34m</div></div>
-          </div>
-          <div class="list-item" onclick="openContactDetail('Dana Hoffmann')">
-            <div class="avatar avatar-sm" style="background:#ede9fe;color:#6d28d9">DH</div>
-            <div class="item-main">
-              <div class="item-name">Dana Hoffmann <span class="tag tag-purple" style="font-size:10px;margin-left:4px">replied</span></div>
-              <div class="item-sub">"We're ready to move forward with the demo"</div>
-            </div>
-            <div class="item-right"><div class="item-right-label">2h</div></div>
-          </div>
+        <div id="dashboard-activity">
+          <div class="empty" style="padding:20px"><p>No activity yet — tap + to log a call</p></div>
         </div>
       </div>
+
     </div>
 
     <!-- ── CONTACTS ── -->
@@ -642,10 +593,97 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ── APP INIT ─────────────────────────────────────────────────────────
 function initApp() {
-  renderContacts();
-  renderPipeline();
-  renderCalendar();
-  renderActivity();
+  loadFromSheets(function() {
+    renderContacts();
+    renderPipeline();
+    renderCalendar();
+    renderActivity();
+    updateDashboardMetrics();
+  });
+}
+
+function updateDashboardMetrics() {
+  var active = DEALS.filter(function(d){ return d.stage !== "Won" && d.stage !== "Lost"; });
+  var total  = active.reduce(function(s,d){ return s + (Number(d.value)||0); }, 0);
+  var rmr    = active.reduce(function(s,d){ return s + (Number(d.rmr)||0); }, 0);
+  var el;
+  el = document.getElementById("db-pipeline"); if(el) el.textContent = total ? "$"+(total/1000).toFixed(0)+"K" : "$0";
+  el = document.getElementById("db-deals");    if(el) el.textContent = active.length;
+  el = document.getElementById("db-rmr");      if(el) el.textContent = rmr ? "$"+(rmr/1000).toFixed(1)+"K" : "$0";
+  // Recent activity on dashboard
+  var actEl = document.getElementById("dashboard-activity");
+  if (actEl && ALL_ACTIVITY.length) {
+    var typeColors = {call:["#dcfce7","#15803d"],email:["#dbeafe","#1d4ed8"],meeting:["#ede9fe","#6d28d9"],voicemail:["#fef3c7","#b45309"],note:["#f3f4f6","#6b7280"]};
+    actEl.innerHTML = ALL_ACTIVITY.slice(0,4).map(function(e){
+      var tc = typeColors[e.type]||typeColors.note;
+      var ini = (e.contact||"?").split(" ").map(function(w){return w[0]||"";}).join("").toUpperCase().substr(0,2);
+      return "<div class='list-item'>"
+        +"<div class='avatar avatar-sm' style='background:"+tc[0]+";color:"+tc[1]+"'>"+ini+"</div>"
+        +"<div class='item-main'>"
+          +"<div class='item-name'>"+(e.contact||"Unknown")+"</div>"
+          +"<div class='item-sub'>"+e.summary.substr(0,50)+(e.summary.length>50?"…":"")+"</div>"
+        +"</div>"
+        +"<div class='item-right'><div class='item-right-label'>"+e.date+"</div></div>"
+        +"</div>";
+    }).join("");
+  }
+}
+
+function loadFromSheets(cb) {
+  var done = 0;
+  var total = 3;
+  function check() { if (++done >= total && cb) cb(); }
+
+  // Load contacts
+  sheetsAPI('getContacts', {}, function(data) {
+    if (data && data.ok && data.contacts && data.contacts.length) {
+      CONTACTS = data.contacts.map(function(c) {
+        if (!c.initials) c.initials = (c.name||'').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().substr(0,2);
+        if (!c.bg) c.bg = '#f3f4f6';
+        if (!c.fg) c.fg = '#374151';
+        return c;
+      });
+    }
+    check();
+  });
+
+  // Load deals
+  sheetsAPI('getDeals', {}, function(data) {
+    if (data && data.ok && data.deals && data.deals.length) {
+      DEALS = data.deals.map(function(d) {
+        return {
+          id:      d.id,
+          name:    d.name    || '',
+          company: d.company || '',
+          value:   Number(d.value) || 0,
+          prob:    Number(d.prob)  || 0,
+          stage:   d.stage   || 'Prospecting',
+          status:  d.status  || '',
+          meta:    d.meta    || ''
+        };
+      });
+    }
+    check();
+  });
+
+  // Load calendar events
+  sheetsAPI('getCalendar', {}, function(data) {
+    if (data && data.ok && data.events && data.events.length) {
+      CAL_EVENTS = data.events.map(function(e) {
+        return {
+          id:      e.id,
+          date:    e.date    || '',
+          title:   e.title   || '',
+          type:    e.type    || 'call',
+          time:    e.time    || '',
+          contact: e.contact || '',
+          company: e.company || '',
+          notes:   e.notes   || ''
+        };
+      });
+    }
+    check();
+  });
 }
 
 // ── TAB NAVIGATION ───────────────────────────────────────────────────
@@ -678,16 +716,8 @@ function goBack() {
 }
 
 // ── CONTACTS ─────────────────────────────────────────────────────────
-var CONTACTS = [
-  {name:'Mike Torres',   title:'VP Operations',      company:'Advanced Security Co.', initials:'MT', bg:'#dbeafe', fg:'#1d4ed8', phone:'(312) 555-0182', mobile:'(312) 555-9204', email:'mikes@advsecurity.com',    prefer:'Call',  role:'Decision Maker'},
-  {name:'Sarah Lin',     title:'Dir. of Technology', company:'Apex Alarm',            initials:'SL', bg:'#dcfce7', fg:'#15803d', phone:'(415) 555-0341', mobile:'(415) 555-7718', email:'slin@apexalarm.com',        prefer:'Email', role:'Champion'},
-  {name:'Dana Hoffmann', title:'COO',                company:'ProGuard Systems',      initials:'DH', bg:'#ede9fe', fg:'#6d28d9', phone:'(614) 555-0093', mobile:'(614) 555-4421', email:'dhoffmann@proguard.com',    prefer:'Call',  role:'Champion'},
-  {name:'Rick Kowalski', title:'IT Manager',         company:'Guardian Shield',       initials:'RK', bg:'#fef3c7', fg:'#b45309', phone:'(773) 555-0276', mobile:'(773) 555-8833', email:'rick.k@guardianshield.com', prefer:'SMS',   role:'Influencer'},
-  {name:'Bob Wheeler',   title:'President',          company:'Tri-State Alarm',       initials:'BW', bg:'#fee2e2', fg:'#b91c1c', phone:'(718) 555-0519', mobile:'(718) 555-6671', email:'bwheeler@tristatealarm.com',prefer:'Call',  role:'Decision Maker'},
-  {name:'James Petrov',  title:'CEO',                company:'SafeNet Alarm',         initials:'JP', bg:'#dbeafe', fg:'#1d4ed8', phone:'(602) 555-0884', mobile:'(602) 555-3347', email:'jpetrov@safenetalarm.com',  prefer:'Email', role:'Decision Maker'},
-  {name:'Amy Chen',      title:'Owner',              company:'BlueStar Security',     initials:'AC', bg:'#dcfce7', fg:'#15803d', phone:'(206) 555-0762', mobile:'(206) 555-5590', email:'achen@bluestarsecurity.com',prefer:'Call',  role:'Decision Maker'},
-  {name:'Tom Reyes',     title:'Operations Manager', company:'Coast Monitoring',      initials:'TR', bg:'#fef3c7', fg:'#b45309', phone:'(858) 555-0133', mobile:'(858) 555-2284', email:'treyes@coastmonitoring.com',prefer:'Email', role:'Influencer'},
-];
+var CONTACTS = [];
+
 
 function renderContacts(filter) {
   var list = document.getElementById('contacts-list');
@@ -783,19 +813,8 @@ function infoRow(label, val) {
 }
 
 // ── PIPELINE ─────────────────────────────────────────────────────────
-var DEALS = [
-  {id:1,  name:'Falcon Security LLC',   company:'220 accts · AlarmWin',   value:32000, prob:40, stage:'Prospecting', status:'warm'},
-  {id:2,  name:'Delta Guard Services',  company:'480 accts · Micro Key',  value:58000, prob:25, stage:'Prospecting', status:''},
-  {id:3,  name:'Guardian Shield',       company:'420 accts · AlarmWin',   value:47000, prob:40, stage:'Discovery',   status:''},
-  {id:4,  name:'BlueStar Security',     company:'310 accounts',           value:31000, prob:35, stage:'Discovery',   status:''},
-  {id:5,  name:'Apex Alarm',            company:'780 accts · Micro Key',  value:89000, prob:60, stage:'Demo',        status:'hot'},
-  {id:6,  name:'Riverside Alarm',       company:'310 accounts',           value:36000, prob:55, stage:'Demo',        status:''},
-  {id:7,  name:'Advanced Security Co.', company:'1,240 accts · AlarmWin', value:85000, prob:30, stage:'Proposal',    status:'stuck'},
-  {id:8,  name:'Tri-State Alarm',       company:'3,100 accounts',         value:112000,prob:20, stage:'Proposal',    status:'stuck'},
-  {id:9,  name:'SafeNet Alarm',         company:'630 accounts',           value:44000, prob:60, stage:'Proposal',    status:''},
-  {id:10, name:'ProGuard Systems',      company:'2,150 accounts',         value:78000, prob:85, stage:'Closing',     status:'hot'},
-  {id:11, name:'Coast Monitoring',      company:'900 accounts',           value:63000, prob:75, stage:'Closing',     status:'hot'},
-];
+var DEALS = [];
+
 var STAGES = ['Prospecting','Discovery','Demo','Proposal','Closing','Won'];
 
 function renderPipeline() {
@@ -866,13 +885,8 @@ function moveDeal(id) {
 }
 
 // ── CALENDAR ─────────────────────────────────────────────────────────
-var CAL_EVENTS = [
-  {id:1, date:'2026-06-07', title:'Call: Rick Kowalski',     type:'call',     time:'3:00 PM', contact:'Rick Kowalski', company:'Guardian Shield'},
-  {id:2, date:'2026-06-10', title:'Demo: BlueStar Security', type:'demo',     time:'2:00 PM', contact:'Amy Chen',      company:'BlueStar Security'},
-  {id:3, date:'2026-06-12', title:'Close: ProGuard Systems', type:'deadline', time:'EOD',     contact:'Dana Hoffmann', company:'ProGuard Systems'},
-  {id:4, date:'2026-06-15', title:'Follow-up: Apex Alarm',   type:'follow',   time:'10:00 AM',contact:'Sarah Lin',     company:'Apex Alarm'},
-  {id:5, date:'2026-06-18', title:'Sign-off: Coast Monitor', type:'deadline', time:'EOD',     contact:'Tom Reyes',     company:'Coast Monitoring'},
-];
+var CAL_EVENTS = [];
+
 var calYear = 2026, calMonth = 5;
 var calSelectedDate = null;
 
@@ -968,6 +982,8 @@ function renderActivity(filter) {
 }
 
 function displayActivity(log) {
+  ALL_ACTIVITY = log;
+  updateDashboardMetrics();
   var list = document.getElementById('activity-list');
   var typeColors = {call:['#dcfce7','#15803d','ti-phone'],email:['#dbeafe','#1d4ed8','ti-mail'],meeting:['#ede9fe','#6d28d9','ti-users'],voicemail:['#fef3c7','#b45309','ti-voicemail'],note:['#f3f4f6','#6b7280','ti-note'],demo:['#dbeafe','#1d4ed8','ti-presentation']};
 
