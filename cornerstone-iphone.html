@@ -286,6 +286,12 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
 .build6-next-action{background:#f8fafc;border:1.5px solid var(--border);border-radius:14px;padding:12px;margin-bottom:16px}
 .build6-next-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.build6-next-btn{border:1.5px solid var(--border);background:#fff;border-radius:12px;padding:10px 8px;font-size:12px;font-weight:800;font-family:inherit;color:var(--text);cursor:pointer}.build6-next-btn.selected{background:var(--blue);border-color:var(--blue);color:#fff}.build6-next-btn.clear{color:var(--gray)}
 
+/* ── RANDY V18: FOLLOW-UP SWIPE ACTIONS ── */
+.followup-row{touch-action:pan-y;user-select:none;transition:transform .12s ease, background .12s ease;position:relative}
+.followup-row.swiping-right{background:#eff6ff}
+.followup-row.swiping-left{background:#f0fdf4}
+.followup-row .swipe-help{font-size:10px;color:#9ca3af;margin-top:1px}
+
 ::-webkit-scrollbar{display:none}
 </style>
 </head>
@@ -960,6 +966,78 @@ function eventDayLabel(e) {
   return 'Today';
 }
 
+function openFollowupEventEditor(e) {
+  if (!e) return;
+  hapticTap && hapticTap();
+  if (typeof openCalEvent === 'function') openCalEvent(e.id);
+  else if (typeof editCalEvent === 'function') editCalEvent(e.id);
+  else if (typeof openEditCalendarEvent === 'function') openEditCalendarEvent(e.id);
+}
+
+function openFollowupAssociatedAccount(e) {
+  if (!e) return;
+  hapticTap && hapticTap();
+  var company = (e.company || '').trim();
+  var contact = (e.contact || '').trim();
+  var derived = cleanEventCompanyName(e);
+  var target = company || derived;
+
+  // Prefer an exact company match if we have one loaded.
+  if (target && typeof openAccountDetail === 'function') {
+    var match = null;
+    if (typeof COMPANIES !== 'undefined' && COMPANIES && COMPANIES.length) {
+      var key = target.toLowerCase().trim();
+      match = COMPANIES.find(function(c){ return String(c.name||'').toLowerCase().trim() === key; });
+      if (!match) match = COMPANIES.find(function(c){ return String(c.name||'').toLowerCase().indexOf(key) >= 0 || key.indexOf(String(c.name||'').toLowerCase()) >= 0; });
+    }
+    if (match) { openAccountDetail(match.name); return; }
+    // Still try the target. Existing account lookup will handle loaded matches.
+    openAccountDetail(target); return;
+  }
+
+  if (contact && typeof openContactDetail === 'function') openContactDetail(contact);
+}
+
+function attachFollowupSwipe(row, e) {
+  var startX = 0, startY = 0, moved = false, swiping = false;
+  var threshold = 58;
+
+  function down(clientX, clientY) {
+    startX = clientX; startY = clientY; moved = false; swiping = true;
+    row.classList.remove('swiping-right','swiping-left');
+  }
+  function move(clientX, clientY) {
+    if (!swiping) return;
+    var dx = clientX - startX;
+    var dy = clientY - startY;
+    if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 12) return;
+    if (Math.abs(dx) > 8) moved = true;
+    var limited = Math.max(-72, Math.min(72, dx));
+    row.style.transform = 'translateX(' + limited + 'px)';
+    row.classList.toggle('swiping-right', dx > 18);
+    row.classList.toggle('swiping-left', dx < -18);
+  }
+  function up(clientX) {
+    if (!swiping) return;
+    var dx = clientX - startX;
+    swiping = false;
+    row.style.transform = '';
+    row.classList.remove('swiping-right','swiping-left');
+    if (dx > threshold) { openFollowupEventEditor(e); return; }
+    if (dx < -threshold) { openFollowupAssociatedAccount(e); return; }
+    if (!moved) openFollowupAssociatedAccount(e);
+  }
+
+  row.addEventListener('touchstart', function(ev){ if(ev.touches && ev.touches[0]) down(ev.touches[0].clientX, ev.touches[0].clientY); }, {passive:true});
+  row.addEventListener('touchmove', function(ev){ if(ev.touches && ev.touches[0]) move(ev.touches[0].clientX, ev.touches[0].clientY); }, {passive:true});
+  row.addEventListener('touchend', function(ev){ var t = (ev.changedTouches && ev.changedTouches[0]) || {clientX:startX}; up(t.clientX); }, {passive:true});
+
+  row.addEventListener('mousedown', function(ev){ down(ev.clientX, ev.clientY); });
+  row.addEventListener('mousemove', function(ev){ if (swiping) move(ev.clientX, ev.clientY); });
+  row.addEventListener('mouseup', function(ev){ up(ev.clientX); });
+  row.addEventListener('mouseleave', function(ev){ if(swiping) up(ev.clientX || startX); });
+}
+
 function renderFollowUpsToday() {
   var list = document.getElementById('followup-list');
   var countEl = document.getElementById('followup-count');
@@ -990,18 +1068,16 @@ function renderFollowUpsToday() {
     var when = eventDayLabel(e) + ' • ' + cleanEventTime(e);
 
     var row = document.createElement('div');
-    row.className = 'list-item';
+    row.className = 'list-item followup-row';
     row.style.cursor = 'pointer';
     row.innerHTML = '<div class="avatar avatar-sm" style="background:'+colors[0]+';color:'+colors[1]+'">'+(iconMap[e.type] || '📅')+'</div>'
       + '<div class="item-main">'
         + '<div class="item-name">'+title+'</div>'
         + '<div class="item-sub">'+when+'</div>'
+        + '<div class="swipe-help">Tap/Open Account · Swipe right/Edit appointment · Swipe left/Open account</div>'
       + '</div>'
       + '<span style="font-style:normal;color:#d1d5db;font-size:18px">›</span>';
-    row.addEventListener('click', function(){
-      if (typeof openCalEvent === 'function') openCalEvent(e.id);
-      else if (typeof editCalEvent === 'function') editCalEvent(e.id);
-    });
+    attachFollowupSwipe(row, e);
     list.appendChild(row);
   });
 }
@@ -4379,6 +4455,219 @@ document.addEventListener('DOMContentLoaded', function(){
   // Expose helpers in case later builds need them.
   window.randyV15PrimaryContactForCompany = primaryContactForCompany;
   window.randyV15ApplyPrimaryContactToBooking = applyPrimaryContactToBooking;
+})();
+</script>
+
+
+<style>
+/* ── RANDY V18 EXPANDED SWIPE ACTIONS - easy to revert ── */
+.swipe-hint-row{position:relative;overflow:hidden;touch-action:pan-y}
+.swipe-hint-row.swipe-pulse-right{background:#ecfdf5!important;transform:translateX(6px);transition:transform .12s,background .12s}
+.swipe-hint-row.swipe-pulse-left{background:#eff6ff!important;transform:translateX(-6px);transition:transform .12s,background .12s}
+.swipe-action-note{font-size:10px;color:var(--gray);margin-top:2px}
+.cal-event.completed{opacity:.65;text-decoration:none}
+.cal-event.completed .cal-event-title{text-decoration:line-through}
+</style>
+<script>
+// ── RANDY V18 EXPANDED SWIPE ACTIONS - easy to revert ──
+// Adds swipe actions to Accounts, Calendar, and Pipeline while preserving the earlier Follow-Ups Today swipe behavior.
+(function(){
+  function clean(v){ return String(v || '').trim(); }
+  function norm(v){ return clean(v).toLowerCase(); }
+  function toast(msg){ if (typeof showToast === 'function') showToast(msg); }
+  function haptic(){ if (typeof hapticTap === 'function') hapticTap(); else { try{ if(navigator.vibrate) navigator.vibrate(8); }catch(e){} } }
+  function addSwipe(row, opts){
+    if (!row || row._randySwipeBound) return;
+    row._randySwipeBound = true;
+    row.classList.add('swipe-hint-row');
+    var sx=0, sy=0, started=false, moved=false;
+    row.addEventListener('touchstart', function(e){
+      if (!e.touches || !e.touches.length) return;
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY; started = true; moved = false;
+    }, {passive:true});
+    row.addEventListener('touchmove', function(e){
+      if (!started || !e.touches || !e.touches.length) return;
+      var dx = e.touches[0].clientX - sx;
+      var dy = e.touches[0].clientY - sy;
+      if (Math.abs(dx) > 20 && Math.abs(dx) > Math.abs(dy) * 1.25) moved = true;
+    }, {passive:true});
+    row.addEventListener('touchend', function(e){
+      if (!started) return;
+      started = false;
+      var touch = e.changedTouches && e.changedTouches[0];
+      if (!touch) return;
+      var dx = touch.clientX - sx;
+      var dy = touch.clientY - sy;
+      if (Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+      e.preventDefault();
+      e.stopPropagation();
+      haptic();
+      var cls = dx > 0 ? 'swipe-pulse-right' : 'swipe-pulse-left';
+      row.classList.add(cls);
+      setTimeout(function(){ row.classList.remove(cls); }, 160);
+      if (dx > 0 && typeof opts.right === 'function') opts.right(row);
+      if (dx < 0 && typeof opts.left === 'function') opts.left(row);
+    }, {passive:false});
+  }
+
+  function primaryForAccount(accountName){
+    var key = norm(accountName);
+    var contacts = (window.CONTACTS || []).filter(function(c){ return norm(c.company) === key; });
+    return contacts.find(function(c){ return c.isPrimary === 'TRUE' || c.isPrimary === true; }) || contacts[0] || null;
+  }
+  function callAccount(accountName){
+    var c = primaryForAccount(accountName);
+    if (!c) { toast('No contact found for ' + accountName); return; }
+    var phone = clean(c.mobile || c.phone);
+    if (!phone) { toast('No phone number for ' + c.name); return; }
+    window.location.href = 'tel:' + phone.replace(/[^0-9+]/g,'');
+  }
+  function scheduleAccount(accountName){
+    var c = primaryForAccount(accountName);
+    if (typeof openBookSheet === 'function') openBookSheet(c ? c.name : '', accountName);
+  }
+  function decorateAccountRows(){
+    var list = document.getElementById('accounts-list');
+    if (!list) return;
+    Array.prototype.forEach.call(list.querySelectorAll('.list-item'), function(row){
+      var nameEl = row.querySelector('.item-name');
+      var accountName = nameEl ? clean(nameEl.textContent) : '';
+      if (!accountName) return;
+      row.setAttribute('data-account-name', accountName);
+      if (!row.querySelector('.swipe-action-note')) {
+        var main = row.querySelector('.item-main');
+        if (main) {
+          var note = document.createElement('div');
+          note.className = 'swipe-action-note';
+          note.textContent = 'Swipe right: Call • Swipe left: Schedule';
+          main.appendChild(note);
+        }
+      }
+      addSwipe(row, {
+        right:function(){ callAccount(accountName); },
+        left:function(){ scheduleAccount(accountName); }
+      });
+    });
+  }
+
+  function markEventComplete(id){
+    var ev = (window.CAL_EVENTS || []).find(function(e){ return String(e.id) === String(id); });
+    if (!ev) { toast('Event not found'); return; }
+    ev.completed = true;
+    if (ev.title && ev.title.indexOf('✓ ') !== 0) ev.title = '✓ ' + ev.title;
+    if (typeof saveCalendarEventEverywhere === 'function') saveCalendarEventEverywhere(ev, function(){});
+    if (typeof calRender === 'function') calRender();
+    if (typeof renderFollowUpsToday === 'function') renderFollowUpsToday();
+    if (typeof updateTodayFocus === 'function') updateTodayFocus();
+    toast('Marked complete ✓');
+  }
+  function decorateCalendarRows(){
+    var list = document.getElementById('cal-events-list');
+    if (!list) return;
+    Array.prototype.forEach.call(list.querySelectorAll('.cal-event'), function(row){
+      var onclick = row.getAttribute('onclick') || '';
+      var m = onclick.match(/openBookSheetForEvent\(['"]([^'"]+)['"]\)/);
+      var id = m ? m[1] : row.getAttribute('data-event-id');
+      if (!id) return;
+      row.setAttribute('data-event-id', id);
+      var ev = (window.CAL_EVENTS || []).find(function(e){ return String(e.id) === String(id); });
+      if (ev && ev.completed) row.classList.add('completed');
+      if (!row.querySelector('.swipe-action-note')) {
+        var target = row.querySelector('div[style*="flex:1"]') || row.querySelector('div:nth-child(2)');
+        if (target) {
+          var note = document.createElement('div');
+          note.className = 'swipe-action-note';
+          note.textContent = 'Swipe right: Complete • Swipe left: Reschedule';
+          target.appendChild(note);
+        }
+      }
+      addSwipe(row, {
+        right:function(){ markEventComplete(id); },
+        left:function(){ if (typeof openBookSheetForEvent === 'function') openBookSheetForEvent(id); }
+      });
+    });
+  }
+
+  function saveDealStage(deal, newStage){
+    if (!deal || !newStage || deal.stage === newStage) return;
+    deal.stage = newStage;
+    if (typeof sheetsAPI === 'function') sheetsAPI('saveDeal', {deal:deal}, function(){});
+    if (typeof renderPipeline === 'function') renderPipeline();
+    if (typeof updateDashboardMetrics === 'function') updateDashboardMetrics();
+    toast('Moved to ' + newStage + ' ✓');
+  }
+  function moveDealOneStage(id, dir){
+    var deal = (window.DEALS || []).find(function(d){ return String(d.id) === String(id); });
+    if (!deal) { toast('Deal not found'); return; }
+    var stages = window.STAGES || ['Prospecting','Discovery','Demo','Proposal','Closing','Won'];
+    var i = stages.indexOf(deal.stage);
+    if (i < 0) i = 0;
+    var ni = i + dir;
+    if (ni < 0 || ni >= stages.length) { toast(dir > 0 ? 'Already at final stage' : 'Already at first stage'); return; }
+    saveDealStage(deal, stages[ni]);
+  }
+  function decoratePipelineRows(){
+    var root = document.getElementById('pipeline-stages');
+    if (!root) return;
+    Array.prototype.forEach.call(root.querySelectorAll('[data-deal-id]'), function(row){
+      var id = row.getAttribute('data-deal-id');
+      if (!id) return;
+      if (!row.querySelector('.swipe-action-note')) {
+        var info = row.querySelector('.deal-info');
+        if (info) {
+          var note = document.createElement('div');
+          note.className = 'swipe-action-note';
+          note.textContent = 'Swipe right: Advance • Swipe left: Move back';
+          info.appendChild(note);
+        }
+      }
+      addSwipe(row, {
+        right:function(){ moveDealOneStage(id, 1); },
+        left:function(){ moveDealOneStage(id, -1); }
+      });
+    });
+  }
+
+  var originalRenderAccounts = window.renderAccounts;
+  if (typeof originalRenderAccounts === 'function') {
+    window.renderAccounts = function(){
+      var ret = originalRenderAccounts.apply(this, arguments);
+      setTimeout(decorateAccountRows, 80);
+      setTimeout(decorateAccountRows, 350);
+      return ret;
+    };
+  }
+  var originalRenderCalEvents = window.renderCalEvents;
+  if (typeof originalRenderCalEvents === 'function') {
+    window.renderCalEvents = function(){
+      var ret = originalRenderCalEvents.apply(this, arguments);
+      setTimeout(decorateCalendarRows, 50);
+      return ret;
+    };
+  }
+  var originalRenderPipeline = window.renderPipeline;
+  if (typeof originalRenderPipeline === 'function') {
+    window.renderPipeline = function(){
+      var ret = originalRenderPipeline.apply(this, arguments);
+      setTimeout(decoratePipelineRows, 50);
+      return ret;
+    };
+  }
+  var originalSwitchTab = window.switchTab;
+  if (typeof originalSwitchTab === 'function') {
+    window.switchTab = function(tab){
+      var ret = originalSwitchTab.apply(this, arguments);
+      setTimeout(function(){
+        if (tab === 'accounts') decorateAccountRows();
+        if (tab === 'calendar') decorateCalendarRows();
+        if (tab === 'pipeline') decoratePipelineRows();
+      }, 150);
+      return ret;
+    };
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    setTimeout(function(){ decorateAccountRows(); decorateCalendarRows(); decoratePipelineRows(); }, 500);
+  });
 })();
 </script>
 
