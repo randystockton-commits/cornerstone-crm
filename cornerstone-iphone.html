@@ -4158,5 +4158,105 @@ document.addEventListener('DOMContentLoaded', function(){
 })();
 </script>
 
+
+
+<script>
+// ── RANDY V15 PRIMARY CONTACT AUTOFILL + PHONE NOTES - easy to revert ──
+(function(){
+  function norm(v){ return String(v || '').toLowerCase().trim(); }
+  function clean(v){ return String(v || '').trim(); }
+  function contactsForCompany(company){
+    var key = norm(company);
+    return (window.CONTACTS || []).filter(function(c){ return norm(c.company) === key; });
+  }
+  function findContact(name, company){
+    var n = norm(name), ckey = norm(company);
+    var contacts = window.CONTACTS || [];
+    return contacts.find(function(c){ return norm(c.name) === n && (!ckey || norm(c.company) === ckey); })
+        || contacts.find(function(c){ return norm(c.name) === n; })
+        || null;
+  }
+  function primaryContactForCompany(company){
+    var list = contactsForCompany(company);
+    return list.find(function(c){ return c.isPrimary === 'TRUE' || c.isPrimary === true; }) || list[0] || null;
+  }
+  function contactPhoneBlock(contactObj, company){
+    if (!contactObj) return '';
+    var lines = [];
+    lines.push('Primary Contact: ' + clean(contactObj.name));
+    if (company) lines.push('Company: ' + clean(company));
+    if (contactObj.phone) lines.push('Phone: ' + clean(contactObj.phone));
+    if (contactObj.mobile) lines.push('Mobile: ' + clean(contactObj.mobile));
+    return lines.join('\n');
+  }
+  function mergePhoneNotes(existing, contactObj, company){
+    var block = contactPhoneBlock(contactObj, company);
+    existing = clean(existing);
+    if (!block) return existing;
+    // Remove an older auto-filled contact block so changing contact does not duplicate phone numbers.
+    existing = existing.replace(/(?:^|\n)Primary Contact:[\s\S]*?(?=\n\n|$)/, '').trim();
+    return block + (existing ? '\n\n' + existing : '');
+  }
+  function applyPrimaryContactToBooking(forceNotes){
+    var contactEl = document.getElementById('book-contact');
+    var notesEl = document.getElementById('book-notes');
+    if (!contactEl || !notesEl) return;
+    var company = window._bookCompanyContext || '';
+    var contactObj = findContact(contactEl.value, company);
+    if (!contactObj && company && (!contactEl.value || forceNotes)) {
+      contactObj = primaryContactForCompany(company);
+      if (contactObj && contactObj.name) contactEl.value = contactObj.name;
+    }
+    if (contactObj) {
+      notesEl.value = mergePhoneNotes(notesEl.value, contactObj, company);
+    }
+    if (typeof updateAutoBookTitle === 'function') updateAutoBookTitle(false);
+  }
+
+  var originalOpenBookSheet = window.openBookSheet;
+  window.openBookSheet = function(contact, company){
+    if (typeof originalOpenBookSheet === 'function') originalOpenBookSheet(contact, company);
+    var contactEl = document.getElementById('book-contact');
+    var notesEl = document.getElementById('book-notes');
+    if (!contactEl || !notesEl) return;
+    var co = company || window._bookCompanyContext || '';
+    var contactObj = contact ? findContact(contact, co) : primaryContactForCompany(co);
+    if (contactObj && contactObj.name) contactEl.value = contactObj.name;
+    notesEl.value = mergePhoneNotes(notesEl.value, contactObj, co);
+    if (typeof updateAutoBookTitle === 'function') updateAutoBookTitle(true);
+  };
+
+  var originalSaveBooking = window.saveBooking;
+  window.saveBooking = function(){
+    applyPrimaryContactToBooking(true);
+    return typeof originalSaveBooking === 'function' ? originalSaveBooking.apply(this, arguments) : undefined;
+  };
+
+  var originalCreateNextActionEvent = window.createNextActionEvent;
+  window.createNextActionEvent = function(contact, company, notes){
+    var contactObj = contact ? findContact(contact, company) : primaryContactForCompany(company);
+    if (contactObj && contactObj.name && !contact) contact = contactObj.name;
+    notes = mergePhoneNotes(notes || '', contactObj, company || '');
+    return typeof originalCreateNextActionEvent === 'function'
+      ? originalCreateNextActionEvent(contact, company, notes)
+      : undefined;
+  };
+
+  document.addEventListener('DOMContentLoaded', function(){
+    var contactEl = document.getElementById('book-contact');
+    var typeEl = document.getElementById('book-type');
+    if (contactEl) {
+      contactEl.addEventListener('change', function(){ applyPrimaryContactToBooking(true); });
+      contactEl.addEventListener('blur', function(){ applyPrimaryContactToBooking(true); });
+    }
+    if (typeEl) typeEl.addEventListener('change', function(){ applyPrimaryContactToBooking(false); });
+  });
+
+  // Expose helpers in case later builds need them.
+  window.randyV15PrimaryContactForCompany = primaryContactForCompany;
+  window.randyV15ApplyPrimaryContactToBooking = applyPrimaryContactToBooking;
+})();
+</script>
+
 </body>
 </html>
