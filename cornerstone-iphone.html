@@ -710,7 +710,7 @@ function hapticTap() {
 
 function todayCount() {
   var today = isoDate(new Date());
-  return CAL_EVENTS.filter(function(e){ return e.date === today; }).length;
+  return CAL_EVENTS.filter(function(e){ return calendarDateKey(e.date) === today; }).length;
 }
 
 function updateNavBadges() {
@@ -866,22 +866,109 @@ function initApp() {
 }
 
 
-// ── RANDY V10: FOLLOW-UPS TODAY FIX ────────────────────────────────
-// Populates the Follow-Ups Today card from today's scheduled calendar items.
-// Includes calls, follow-ups, demos, meetings, and appointments scheduled for today.
+// ── RANDY V17: CLEAN FOLLOW-UPS AGENDA FORMAT ─────────────────────
+// Shows follow-ups as: "Demo: Nexus Guard" then "Today • 2:30 PM".
+// Also fixes Google Sheets time-only values that can come through as 1899-12-30 timestamps.
+function cleanEventTypeLabel(type) {
+  var labels = {call:'Call', demo:'Demo', meeting:'Meeting', follow:'Follow-Up', deadline:'Deadline', appointment:'Appointment'};
+  return labels[type] || 'Appointment';
+}
+
+function cleanEventCompanyName(e) {
+  var company = (e && e.company ? String(e.company).trim() : '');
+  var contact = (e && e.contact ? String(e.contact).trim() : '');
+  var title = (e && e.title ? String(e.title).trim() : '');
+  if (company) return company;
+
+  // If title is already "Demo - Nexus Guard" or "Demo: Nexus Guard", pull the name after the separator.
+  var m = title.match(/^\s*[^:\-]+\s*[:\-]\s*(.+)$/);
+  if (m && m[1]) return m[1].trim();
+
+  return contact || title || 'Scheduled Activity';
+}
+
+function cleanAgendaTitle(e) {
+  return cleanEventTypeLabel(e.type) + ': ' + cleanEventCompanyName(e);
+}
+
+function sheetsTimeToMinutes(value) {
+  if (value === null || value === undefined || value === '') return null;
+
+  if (value instanceof Date && !isNaN(value)) {
+    return value.getHours() * 60 + value.getMinutes();
+  }
+
+  var s = String(value).trim();
+  if (!s) return null;
+
+  // Google Sheets time-only dates often appear as 1899-12-30T14:30:00.000Z.
+  var isoTime = s.match(/T(\d{1,2}):(\d{2})(?::\d{2})?/);
+  if (isoTime) return parseInt(isoTime[1],10) * 60 + parseInt(isoTime[2],10);
+
+  // 24-hour time like 14:30 or 14:30:00.
+  var h24 = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (h24) return parseInt(h24[1],10) * 60 + parseInt(h24[2],10);
+
+  // 12-hour time like 2:30 PM.
+  var h12 = s.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (h12) {
+    var h = parseInt(h12[1],10), min = parseInt(h12[2],10), ap = h12[3].toUpperCase();
+    if (ap === 'PM' && h < 12) h += 12;
+    if (ap === 'AM' && h === 12) h = 0;
+    return h * 60 + min;
+  }
+
+  // Sheets sometimes sends time-only cells as a decimal fraction of a day.
+  var n = Number(s);
+  if (!isNaN(n) && n >= 0 && n < 1) return Math.round(n * 24 * 60);
+
+  return null;
+}
+
+function minutesToAgendaTime(mins) {
+  if (mins === null || mins === undefined || isNaN(mins)) return 'No time set';
+  mins = ((mins % 1440) + 1440) % 1440;
+  var h = Math.floor(mins / 60);
+  var m = mins % 60;
+  var ap = h < 12 ? 'AM' : 'PM';
+  var displayH = h === 0 ? 12 : (h > 12 ? h - 12 : h);
+  return displayH + ':' + String(m).padStart(2,'0') + ' ' + ap;
+}
+
+function cleanEventTime(e) {
+  var mins = sheetsTimeToMinutes(e.start || e.time || '');
+  return minutesToAgendaTime(mins);
+}
+
+function cleanEventSortMinutes(e) {
+  var mins = sheetsTimeToMinutes(e.start || e.time || '');
+  return mins === null ? 9999 : mins;
+}
+
+function eventDayLabel(e) {
+  var key = calendarDateKey(e.date);
+  var today = isoDate(new Date());
+  var d = new Date(key + 'T12:00:00');
+  if (key === today) return 'Today';
+  var tomorrowDate = new Date();
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  if (key === isoDate(tomorrowDate)) return 'Tomorrow';
+  if (!isNaN(d)) {
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return months[d.getMonth()] + ' ' + d.getDate();
+  }
+  return 'Today';
+}
+
 function renderFollowUpsToday() {
   var list = document.getElementById('followup-list');
   var countEl = document.getElementById('followup-count');
   if (!list) return;
 
   var today = (typeof isoDate === 'function') ? isoDate(new Date()) : new Date().toISOString().split('T')[0];
-  var events = (CAL_EVENTS || []).filter(function(e){ return e && e.date === today; });
+  var events = (CAL_EVENTS || []).filter(function(e){ return e && calendarDateKey(e.date) === today; });
 
-  events.sort(function(a,b){
-    var at = eventStartMinutes(a); if (at === null) at = 9999;
-    var bt = eventStartMinutes(b); if (bt === null) bt = 9999;
-    return at - bt;
-  });
+  events.sort(function(a,b){ return cleanEventSortMinutes(a) - cleanEventSortMinutes(b); });
 
   if (countEl) {
     countEl.textContent = events.length ? events.length : '';
@@ -899,12 +986,8 @@ function renderFollowUpsToday() {
   list.innerHTML = '';
   events.forEach(function(e){
     var colors = colorMap[e.type] || colorMap.appointment;
-    var label = (e.time || e.start || '').trim() || 'Today';
-    var title = e.title || e.contact || 'Scheduled Activity';
-    var sub = [];
-    if (e.contact) sub.push(e.contact);
-    if (e.company) sub.push(e.company);
-    if (e.notes) sub.push(String(e.notes).substr(0,42) + (String(e.notes).length > 42 ? '…' : ''));
+    var title = cleanAgendaTitle(e);
+    var when = eventDayLabel(e) + ' • ' + cleanEventTime(e);
 
     var row = document.createElement('div');
     row.className = 'list-item';
@@ -912,9 +995,9 @@ function renderFollowUpsToday() {
     row.innerHTML = '<div class="avatar avatar-sm" style="background:'+colors[0]+';color:'+colors[1]+'">'+(iconMap[e.type] || '📅')+'</div>'
       + '<div class="item-main">'
         + '<div class="item-name">'+title+'</div>'
-        + '<div class="item-sub">'+(sub.length ? sub.join(' · ') : 'Scheduled for today')+'</div>'
+        + '<div class="item-sub">'+when+'</div>'
       + '</div>'
-      + '<div class="item-right"><div class="item-right-label">'+label+'</div></div>';
+      + '<span style="font-style:normal;color:#d1d5db;font-size:18px">›</span>';
     row.addEventListener('click', function(){
       if (typeof openCalEvent === 'function') openCalEvent(e.id);
       else if (typeof editCalEvent === 'function') editCalEvent(e.id);
@@ -1695,11 +1778,46 @@ var CAL_EVENTS = [];
 // This prevents newly scheduled events from disappearing if the Sheets save fails or times out.
 var CAL_STORE_KEY = 'cornerstone_calendar_events_v13';
 
+
+// ── RANDY V16: ROBUST CALENDAR DATE KEYS ─────────────────────────────
+// Keeps Follow-Ups Today working even if Sheets returns dates as 6/7/2026,
+// Jun 7, 2026, or an ISO datetime instead of YYYY-MM-DD.
+function calendarDateKey(value) {
+  if (!value) return '';
+  if (value instanceof Date && !isNaN(value)) return isoDate(value);
+  var s = String(value).trim();
+  if (!s) return '';
+
+  // Already YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss
+  var iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) return iso[1] + '-' + String(iso[2]).padStart(2,'0') + '-' + String(iso[3]).padStart(2,'0');
+
+  // MM/DD/YYYY or M/D/YY
+  var slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (slash) {
+    var y = slash[3].length === 2 ? ('20' + slash[3]) : slash[3];
+    return y + '-' + String(slash[1]).padStart(2,'0') + '-' + String(slash[2]).padStart(2,'0');
+  }
+
+  // Month name formats like Jun 7, 2026
+  var months = {jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
+  var clean = s.replace(',', ' ').replace(/\s+/g, ' ').trim();
+  var parts = clean.split(' ');
+  if (parts.length >= 3 && months[parts[0].toLowerCase()]) {
+    return String(parts[2]).padStart(4,'0') + '-' + String(months[parts[0].toLowerCase()]).padStart(2,'0') + '-' + String(parts[1]).padStart(2,'0');
+  }
+
+  // Last resort browser parse. Use noon to avoid timezone day-shift.
+  var d = new Date(s);
+  if (!isNaN(d)) return isoDate(new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0));
+  return s;
+}
+
 function normalizeCalEvent(e) {
   if (!e) return null;
   return {
     id: e.id || ('local-' + Date.now() + '-' + Math.floor(Math.random()*10000)),
-    date: e.date || '',
+    date: calendarDateKey(e.date || e.startDate || e.Date || ''),
     title: e.title || '',
     type: e.type || 'call',
     time: e.time || '',
@@ -1746,9 +1864,15 @@ function upsertCalendarEventLocal(ev) {
 
 function saveCalendarEventEverywhere(ev, cb) {
   upsertCalendarEventLocal(ev);
+  updateTodayFocus();
+  renderFollowUpsToday();
+  if (_currentTab === 'calendar') calRender();
   sheetsAPI('saveCalEvent', {event: ev}, function(resp){
     // Google Sheets save is controlled by Apps Script. Local save always happens immediately.
     if (resp && resp.ok === false) showToast('Saved here, but Sheets did not confirm');
+    updateTodayFocus();
+    renderFollowUpsToday();
+    if (_currentTab === 'calendar') calRender();
     if (cb) cb(resp);
   });
 }
@@ -1779,7 +1903,7 @@ function calRender() {
 
   for (var d=1; d<=days; d++) {
     var ds = calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
-    var hasEvent = CAL_EVENTS.some(function(e){ return e.date===ds; });
+    var hasEvent = CAL_EVENTS.some(function(e){ return calendarDateKey(e.date)===ds; });
     var isToday  = ds===todayStr;
     var isSel    = ds===calSelectedDate;
     html += '<button class="cal-day-btn'+(isToday?' today':'')+(isSel?' selected':'')+'" onclick="selectCalDay(\''+ds+'\')">'
@@ -1803,7 +1927,7 @@ function selectCalDay(ds) {
 function renderCalEvents(ds) {
   var label   = document.getElementById('cal-selected-label');
   var list    = document.getElementById('cal-events-list');
-  var events  = ds ? CAL_EVENTS.filter(function(e){ return e.date===ds; }) : CAL_EVENTS.filter(function(e){ return e.date>=isoDate(new Date()); }).slice(0,5);
+  var events  = ds ? CAL_EVENTS.filter(function(e){ return calendarDateKey(e.date)===ds; }) : CAL_EVENTS.filter(function(e){ return calendarDateKey(e.date)>=isoDate(new Date()); }).slice(0,5);
 
   if (ds) {
     var d2 = new Date(ds+'T12:00:00');
@@ -1961,7 +2085,7 @@ function renderLogNextMiniCalendar() {
   for (var i=0; i<first; i++) html += '<button class="book-mini-day empty" type="button" disabled></button>';
   for (var d=1; d<=days; d++) {
     var ds = _logNextPickerYear + '-' + String(_logNextPickerMonth + 1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
-    var count = CAL_EVENTS.filter(function(e){ return e.date === ds; }).length;
+    var count = CAL_EVENTS.filter(function(e){ return calendarDateKey(e.date) === ds; }).length;
     var loadClass = count >= 6 ? ' busy-6' : count >= 3 ? ' busy-3' : count > 0 ? ' busy-1' : '';
     var selectedClass = ds === selected ? ' selected' : '';
     var todayClass = ds === todayStr ? ' today' : '';
@@ -2215,7 +2339,7 @@ function renderBookMiniCalendar() {
 
   for (var d=1; d<=days; d++) {
     var ds = _bookPickerYear + '-' + String(_bookPickerMonth + 1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
-    var count = CAL_EVENTS.filter(function(e){ return e.date === ds && String(e.id) !== String(_editingEventId || ''); }).length;
+    var count = CAL_EVENTS.filter(function(e){ return calendarDateKey(e.date) === ds && String(e.id) !== String(_editingEventId || ''); }).length;
     var loadClass = count >= 6 ? ' busy-6' : count >= 3 ? ' busy-3' : count > 0 ? ' busy-1' : '';
     var selectedClass = ds === selected ? ' selected' : '';
     var todayClass = ds === todayStr ? ' today' : '';
@@ -2250,7 +2374,7 @@ function updateBookDayAvailability() {
   if (start !== null && end === null) end = start + 30;
 
   var events = CAL_EVENTS.filter(function(e){
-    return e.date === date && String(e.id) !== String(_editingEventId || '');
+    return calendarDateKey(e.date) === date && String(e.id) !== String(_editingEventId || '');
   }).sort(function(a,b){ return eventStartMinutes(a) - eventStartMinutes(b); });
 
   if (countEl) countEl.textContent = events.length ? events.length : 'Clear';
@@ -2329,7 +2453,7 @@ function saveBooking() {
   var endMin = minutesFromTime(end);
   if (startMin !== null && endMin === null) endMin = startMin + 30;
   var conflict = CAL_EVENTS.some(function(e){
-    return e.date === date
+    return calendarDateKey(e.date) === date
       && String(e.id) !== String(_editingEventId || '')
       && eventsOverlap(startMin, endMin, eventStartMinutes(e), eventEndMinutes(e));
   });
