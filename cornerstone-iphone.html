@@ -259,7 +259,6 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
         <span style="font-size:12px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.08em">Pipeline Overview</span>
         <button onclick="refreshDashboard()" style="background:none;border:none;font-size:12px;color:var(--blue);cursor:pointer;padding:4px 8px;font-family:inherit;font-weight:600">↻ Refresh</button>
       </div>
-      <div id="sync-status" style="display:none;font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:8px;text-align:center"></div>
       <div class="metrics-grid">
         <div class="metric">
           <div class="metric-label">Pipeline Value</div>
@@ -366,7 +365,7 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
   </div><!-- /screens -->
 
   <!-- FAB -->
-  <button class="fab" id="fab-btn" onclick="openLogSheet(null,null)" style="font-size:32px;line-height:1;padding:0">+</button>
+  <button class="fab" id="fab-btn" onclick="openSheet('add-choice-sheet')" style="font-size:32px;line-height:1;padding:0">+</button>
 
   <!-- BOTTOM NAV -->
   <div class="bottom-nav">
@@ -533,14 +532,7 @@ function tryFetch(action, data, cb) {
   .catch(function() { handleOffline(action, data, cb); });
 }
 
-function setSyncStatus(msg, color) {
-  var el = document.getElementById('sync-status');
-  if (!el) return;
-  el.style.display = msg ? 'block' : 'none';
-  el.style.background = color === 'green' ? '#dcfce7' : color === 'red' ? '#fee2e2' : '#fef3c7';
-  el.style.color = color === 'green' ? '#15803d' : color === 'red' ? '#b91c1c' : '#b45309';
-  el.textContent = msg;
-}
+function setSyncStatus(msg, color) { /* removed */ }
 
 function sheetsAPI(action, data, cb) {
   if (!SHEETS_URL || SHEETS_URL === 'PASTE_YOUR_WEB_APP_URL_HERE') {
@@ -677,18 +669,23 @@ function updateDashboardMetrics() {
   var actEl = document.getElementById("dashboard-activity");
   if (actEl && ALL_ACTIVITY.length) {
     var typeColors = {call:["#dcfce7","#15803d"],email:["#dbeafe","#1d4ed8"],meeting:["#ede9fe","#6d28d9"],voicemail:["#fef3c7","#b45309"],note:["#f3f4f6","#6b7280"]};
-    actEl.innerHTML = ALL_ACTIVITY.slice(0,4).map(function(e){
-      var tc = typeColors[e.type]||typeColors.note;
-      var ini = (e.contact||"?").split(" ").map(function(w){return w[0]||"";}).join("").toUpperCase().substr(0,2);
-      return "<div class='list-item'>"
-        +"<div class='avatar avatar-sm' style='background:"+tc[0]+";color:"+tc[1]+"'>"+ini+"</div>"
-        +"<div class='item-main'>"
-          +"<div class='item-name'>"+(e.contact||"Unknown")+"</div>"
-          +"<div class='item-sub'>"+e.summary.substr(0,50)+(e.summary.length>50?"…":"")+"</div>"
-        +"</div>"
-        +"<div class='item-right'><div class='item-right-label'>"+e.date+"</div></div>"
-        +"</div>";
-    }).join("");
+    var sorted = ALL_ACTIVITY.slice().sort(function(a,b){ return (Number(b.ts)||0)-(Number(a.ts)||0); });
+    actEl.innerHTML = '';
+    sorted.slice(0,20).forEach(function(e){
+      var tc  = typeColors[e.type] || typeColors.note;
+      var ini = (e.contact||'?').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().substr(0,2);
+      var row = document.createElement('div');
+      row.className = 'list-item';
+      if (e.contact) {
+        row.style.cursor = 'pointer';
+        (function(n){ row.addEventListener('click', function(){ openContactDetail(n); }); })(e.contact);
+      }
+      row.innerHTML = '<div class="avatar avatar-sm" style="background:'+tc[0]+';color:'+tc[1]+'">'+ini+'</div>'
+        + '<div class="item-main"><div class="item-name">'+(e.contact||'Unknown')+'</div>'
+        + '<div class="item-sub">'+(e.summary||'').substr(0,55)+((e.summary||'').length>55?'…':'')+'</div></div>'
+        + '<div class="item-right"><div class="item-right-label">'+(e.date||'')+'</div></div>';
+      actEl.appendChild(row);
+    });
   }
 }
 
@@ -876,6 +873,7 @@ function renderContactDetail(c, log) {
       + '<button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="openLogSheet(\''+c.name.replace(/'/g,"\\'")+'\',\''+((c.company||'').replace(/'/g,"\\'"))+'\')">'
         + '<span style="font-style:normal;">✏</span> Log Activity'
       + '</button>'
+      + '<button class="btn" style="width:100%;margin-top:8px" id="edit-contact-btn">✎ Edit Contact</button>'
     + '</div>'
 
     + '<div class="card">'
@@ -886,7 +884,12 @@ function renderContactDetail(c, log) {
         + infoRow('Email', c.email)
         + infoRow('Prefers', c.prefer)
         + infoRow('Role', c.role)
-        + infoRow('Company', c.company)
+        + (c.company ? (function(co){
+          return '<div class="info-row" style="padding:12px 16px">'
+            + '<span class="info-label">Company</span>'
+            + '<button id="co-link-btn" style="background:none;border:none;font-size:14px;font-weight:500;color:var(--blue);cursor:pointer;font-family:inherit">'+co+' 👥</button>'
+            + '</div>';
+        })(c.company) : '')
       + '</div>'
     + '</div>'
 
@@ -1207,9 +1210,11 @@ function closeSheet(id) {
   document.body.style.overflow = '';
 }
 
-// Close sheets on backdrop tap
-document.querySelectorAll('.sheet-overlay').forEach(function(ov){
-  ov.addEventListener('click', function(e){ if(e.target===ov) closeSheet(ov.id); });
+// Close sheets on backdrop tap (runs after DOM ready)
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.sheet-overlay').forEach(function(ov){
+    ov.addEventListener('click', function(e){ if(e.target===ov) closeSheet(ov.id); });
+  });
 });
 
 // ── TOAST ────────────────────────────────────────────────────────────
@@ -1227,8 +1232,380 @@ document.getElementById('header-action-btn').addEventListener('click', function(
   openLogSheet(null,null);
 });
 
+
+function openEditContact(name) {
+  var c = CONTACTS.find(function(x){ return x.name===name; });
+  if (!c) return;
+  document.getElementById('ac-name').value    = c.name    || '';
+  document.getElementById('ac-title').value   = c.title   || '';
+  document.getElementById('ac-company').value = c.company || '';
+  document.getElementById('ac-phone').value   = c.phone   || '';
+  document.getElementById('ac-mobile').value  = c.mobile  || '';
+  document.getElementById('ac-email').value   = c.email   || '';
+  document.getElementById('ac-notes').value   = c.notes   || '';
+  var roleEl = document.getElementById('ac-role');
+  var prefEl = document.getElementById('ac-prefer');
+  if (roleEl)   for(var i=0;i<roleEl.options.length;i++)   if(roleEl.options[i].value===c.role)   roleEl.selectedIndex=i;
+  if (prefEl)   for(var i=0;i<prefEl.options.length;i++)   if(prefEl.options[i].value===c.prefer) prefEl.selectedIndex=i;
+  var titleEl = document.querySelector('#add-contact-sheet .sheet-title');
+  if (titleEl) titleEl.textContent = 'Edit Contact';
+  openSheet('add-contact-sheet');
+}
+
+function openCompanyContacts(companyName) {
+  var coContacts = CONTACTS.filter(function(c){
+    return (c.company||'').toLowerCase() === companyName.toLowerCase();
+  });
+  var ov = document.getElementById('co-contacts-ov');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.className = 'sheet-overlay';
+    ov.id = 'co-contacts-ov';
+    ov.innerHTML = '<div class="sheet"><div class="sheet-handle"></div>'
+      + '<div class="sheet-header"><div class="sheet-title" id="co-contacts-title"></div>'
+      + '<button class="sheet-close" id="co-contacts-close" style="font-size:18px">✕</button></div>'
+      + '<div class="sheet-body" id="co-contacts-body"></div>'
+      + '<div style="padding:0 20px 20px"><button class="btn btn-primary btn-block" id="co-contacts-add">+ Add Contact to this Company</button></div>'
+      + '</div>';
+    ov.addEventListener('click', function(e){ if(e.target===ov) closeSheet('co-contacts-ov'); });
+    document.body.appendChild(ov);
+    document.getElementById('co-contacts-close').addEventListener('click', function(){ closeSheet('co-contacts-ov'); });
+  }
+  document.getElementById('co-contacts-title').textContent = companyName + ' — Contacts';
+  var body = document.getElementById('co-contacts-body');
+  body.innerHTML = '';
+  if (!coContacts.length) {
+    body.innerHTML = '<div class="empty" style="padding:20px"><p>No contacts for this company yet</p></div>';
+  } else {
+    coContacts.forEach(function(c) {
+      var row = document.createElement('div');
+      row.className = 'list-item';
+      row.style.cursor = 'pointer';
+      row.innerHTML = '<div class="avatar avatar-sm" style="background:'+(c.bg||'#f3f4f6')+';color:'+(c.fg||'#374151')+'">'+(c.initials||'?')+'</div>'
+        + '<div class="item-main"><div class="item-name">'+c.name+'</div><div class="item-sub">'+(c.title||'')+'</div></div>'
+        + '<span style="font-size:20px;color:#d1d5db">›</span>';
+      row.addEventListener('click', function(){
+        closeSheet('co-contacts-ov');
+        openContactDetail(c.name);
+      });
+      body.appendChild(row);
+    });
+  }
+  var addBtn = document.getElementById('co-contacts-add');
+  addBtn.onclick = function(){
+    closeSheet('co-contacts-ov');
+    document.getElementById('ac-company').value = companyName;
+    var titleEl = document.querySelector('#add-contact-sheet .sheet-title');
+    if (titleEl) titleEl.textContent = 'Add Contact';
+    openSheet('add-contact-sheet');
+  };
+  openSheet('co-contacts-ov');
+}
+
 // Init calendar
 calRender();
+
+// ── ADD CONTACT / COMPANY ─────────────────────────────────────────────
+function searchACCompany(val) {
+  var res = document.getElementById('ac-company-results');
+  if (!val.trim() || !CONTACTS.length) { res.style.display='none'; return; }
+  var matches = [...new Set(CONTACTS.map(function(c){ return c.company||''; }))].filter(function(co){
+    return co.toLowerCase().includes(val.toLowerCase());
+  }).slice(0,5);
+  if (!matches.length) { res.style.display='none'; return; }
+  res.style.display='block';
+  res.innerHTML = '';
+  matches.forEach(function(co) {
+    var div = document.createElement('div');
+    div.style.cssText = 'padding:12px 14px;border-bottom:1px solid #e5e7eb;cursor:pointer;font-size:14px';
+    div.textContent = '🏢 ' + co;
+    div.addEventListener('click', function() {
+      document.getElementById('ac-company').value = co;
+      document.getElementById('ac-company-results').style.display = 'none';
+    });
+    res.appendChild(div);
+  });
+}
+
+function saveNewContact() {
+  var name = (document.getElementById('ac-name').value||'').trim();
+  if (!name) { showToast('Name is required'); return; }
+  var ini = name.split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().substr(0,2);
+  var colors = [['#dbeafe','#1d4ed8'],['#dcfce7','#15803d'],['#ede9fe','#6d28d9'],['#fef3c7','#b45309'],['#fee2e2','#b91c1c']];
+  var col = colors[CONTACTS.length % colors.length];
+  var contact = {
+    id:        Date.now().toString(36),
+    name:      name,
+    nameLower: name.toLowerCase(),
+    title:     document.getElementById('ac-title').value||'',
+    phone:     document.getElementById('ac-phone').value||'',
+    mobile:    document.getElementById('ac-mobile').value||'',
+    email:     document.getElementById('ac-email').value||'',
+    company:   document.getElementById('ac-company').value||'',
+    role:      document.getElementById('ac-role').value||'Decision Maker',
+    prefer:    document.getElementById('ac-prefer').value||'Call',
+    notes:     document.getElementById('ac-notes').value||'',
+    bg:        col[0], fg: col[1], initials: ini,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    updatedBy: CURRENT_SESSION ? CURRENT_SESSION.username : 'user',
+  };
+  var existingIdx = CONTACTS.findIndex(function(c){ return c.name.toLowerCase()===name.toLowerCase(); });
+  var isEdit = existingIdx >= 0;
+  if (isEdit) { contact.id = CONTACTS[existingIdx].id || contact.id; CONTACTS[existingIdx] = contact; }
+  else { CONTACTS.unshift(contact); }
+  sheetsAPI('saveContact', {contact: contact}, function(){});
+  renderContacts();
+  updateDashboardMetrics();
+  closeSheet('add-contact-sheet');
+  ['ac-name','ac-title','ac-company','ac-phone','ac-mobile','ac-email','ac-notes'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.value='';
+  });
+  var titleEl = document.querySelector('#add-contact-sheet .sheet-title');
+  if (titleEl) titleEl.textContent = 'Add Contact';
+  showToast(isEdit ? 'Contact updated ✓' : 'Contact saved ✓');
+}
+
+function saveNewCompany() {
+  var name = (document.getElementById('co-name').value||'').trim();
+  if (!name) { showToast('Company name is required'); return; }
+  var val  = Number(document.getElementById('co-value').value)||0;
+  var prob = 30;
+  var stage= document.getElementById('co-stage').value||'Prospect';
+  var company = {
+    id:        Date.now().toString(36),
+    name:      name,
+    nameLower: name.toLowerCase(),
+    accounts:  document.getElementById('co-accounts').value||'0',
+    rmr:       document.getElementById('co-rmr').value||'0',
+    software:  document.getElementById('co-software').value||'',
+    cs:        document.getElementById('co-cs').value||'',
+    dealValue: String(val),
+    prob:      String(prob),
+    stage:     stage,
+    contact:   document.getElementById('co-contact').value||'',
+    notesLog:  document.getElementById('co-notes').value||'',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    updatedBy: CURRENT_SESSION ? CURRENT_SESSION.username : 'user',
+  };
+  sheetsAPI('saveCompany', {company: company}, function(){ showToast('Company saved ✓'); });
+
+  // Also add to pipeline if has deal value
+  if (val > 0 && stage !== 'Prospect') {
+    var deal = {
+      id:      Date.now().toString(36) + 'D',
+      name:    name,
+      company: name,
+      value:   val,
+      prob:    prob,
+      stage:   stage === 'Negotiation' ? 'Closing' : stage,
+      status:  '',
+      meta:    (document.getElementById('co-accounts').value||'0') + ' accts',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      updatedBy: CURRENT_SESSION ? CURRENT_SESSION.username : 'user',
+    };
+    DEALS.push(deal);
+    sheetsAPI('saveDeal', {deal: deal}, function(){});
+    renderPipeline();
+    updateDashboardMetrics();
+  }
+
+  closeSheet('add-company-sheet');
+  ['co-name','co-accounts','co-rmr','co-value','co-contact','co-notes'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.value='';
+  });
+}
+
 </script>
+
+<!-- ── ADD CONTACT SHEET ── -->
+<div class="sheet-overlay" id="add-contact-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">Add Contact</div>
+      <button class="sheet-close" onclick="closeSheet('add-contact-sheet')" style="font-size:18px">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="form-group">
+        <label class="form-label">Full Name *</label>
+        <input class="form-input" type="text" id="ac-name" placeholder="Jane Smith">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Title</label>
+        <input class="form-input" type="text" id="ac-title" placeholder="VP Operations">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Company</label>
+        <input class="form-input" type="text" id="ac-company" placeholder="ABC Security" oninput="searchACCompany(this.value)">
+        <div id="ac-company-results" style="display:none;border:1.5px solid var(--border);border-radius:12px;margin-top:6px;max-height:140px;overflow-y:auto;background:#fff"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group">
+          <label class="form-label">Phone</label>
+          <input class="form-input" type="tel" id="ac-phone" placeholder="(555) 000-0000">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Mobile</label>
+          <input class="form-input" type="tel" id="ac-mobile" placeholder="(555) 000-0000">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input class="form-input" type="email" id="ac-email" placeholder="jane@company.com">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group">
+          <label class="form-label">Role</label>
+          <select class="form-input form-select" id="ac-role">
+            <option>Decision Maker</option>
+            <option>Champion</option>
+            <option>Influencer</option>
+            <option>Economic Buyer</option>
+            <option>Technical Buyer</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Prefers</label>
+          <select class="form-input form-select" id="ac-prefer">
+            <option>Call</option>
+            <option>Email</option>
+            <option>Text</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-input form-textarea" id="ac-notes" placeholder="Key info about this contact…" style="min-height:70px"></textarea>
+      </div>
+      <button class="btn btn-primary btn-block btn-lg" onclick="saveNewContact()">
+        👤 Save Contact
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── ADD COMPANY SHEET ── -->
+<div class="sheet-overlay" id="add-company-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">Add Company</div>
+      <button class="sheet-close" onclick="closeSheet('add-company-sheet')" style="font-size:18px">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="form-group">
+        <label class="form-label">Company Name *</label>
+        <input class="form-input" type="text" id="co-name" placeholder="ABC Security">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group">
+          <label class="form-label">Accounts</label>
+          <input class="form-input" type="number" id="co-accounts" placeholder="500">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Monthly RMR</label>
+          <input class="form-input" type="number" id="co-rmr" placeholder="8500">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group">
+          <label class="form-label">Software</label>
+          <select class="form-input form-select" id="co-software">
+            <option>AlarmWin</option>
+            <option>Micro Key</option>
+            <option>Bold</option>
+            <option>Manitou</option>
+            <option>Stages</option>
+            <option>SureView</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">CS Provider</label>
+          <select class="form-input form-select" id="co-cs">
+            <option>Cops</option>
+            <option>Rapid</option>
+            <option>US Signal</option>
+            <option>Affiliated</option>
+            <option>Alarm Capital</option>
+            <option>Other</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group">
+          <label class="form-label">Deal Value</label>
+          <input class="form-input" type="number" id="co-value" placeholder="45000">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Stage</label>
+          <select class="form-input form-select" id="co-stage">
+            <option>Prospect</option>
+            <option>Discovery</option>
+            <option>Demo</option>
+            <option>Proposal</option>
+            <option>Negotiation</option>
+            <option>Closed Won</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Primary Contact</label>
+        <input class="form-input" type="text" id="co-contact" placeholder="Jane Smith">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-input form-textarea" id="co-notes" placeholder="Pain points, background, key info…" style="min-height:70px"></textarea>
+      </div>
+      <button class="btn btn-primary btn-block btn-lg" onclick="saveNewCompany()">
+        🏢 Save Company
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── ADD CHOICE SHEET ── -->
+<div class="sheet-overlay" id="add-choice-sheet">
+  <div class="sheet" style="padding-bottom:20px">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">Add New</div>
+      <button class="sheet-close" onclick="closeSheet('add-choice-sheet')" style="font-size:18px">✕</button>
+    </div>
+    <div class="sheet-body" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <button onclick="closeSheet('add-choice-sheet');openSheet('add-contact-sheet')" style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px 16px;background:var(--blue-light);border:2px solid var(--blue-mid);border-radius:16px;cursor:pointer;font-family:inherit">
+        <span style="font-size:36px">👤</span>
+        <span style="font-size:15px;font-weight:700;color:var(--blue)">Contact</span>
+        <span style="font-size:12px;color:var(--gray)">Add a person</span>
+      </button>
+      <button onclick="closeSheet('add-choice-sheet');openSheet('add-company-sheet')" style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px 16px;background:#f0fdf4;border:2px solid #bbf7d0;border-radius:16px;cursor:pointer;font-family:inherit">
+        <span style="font-size:36px">🏢</span>
+        <span style="font-size:15px;font-weight:700;color:var(--green)">Company</span>
+        <span style="font-size:12px;color:var(--gray)">Add an account</span>
+      </button>
+      <button onclick="closeSheet('add-choice-sheet');openSheet('log-sheet')" style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px 16px;background:var(--purple-light);border:2px solid #ddd6fe;border-radius:16px;cursor:pointer;font-family:inherit">
+        <span style="font-size:36px">📞</span>
+        <span style="font-size:15px;font-weight:700;color:var(--purple)">Log Call</span>
+        <span style="font-size:12px;color:var(--gray)">Record activity</span>
+      </button>
+      <button onclick="closeSheet('add-choice-sheet');openSheet('book-sheet')" style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px 16px;background:var(--amber-light);border:2px solid #fde68a;border-radius:16px;cursor:pointer;font-family:inherit">
+        <span style="font-size:36px">📅</span>
+        <span style="font-size:15px;font-weight:700;color:var(--amber)">Appointment</span>
+        <span style="font-size:12px;color:var(--gray)">Book a meeting</span>
+      </button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
+  // Wire buttons after render
+  setTimeout(function(){
+    var editBtn = document.getElementById('edit-contact-btn');
+    if (editBtn) editBtn.addEventListener('click', function(){ openEditContact(c.name); });
+    var coBtn = document.getElementById('co-link-btn');
+    if (coBtn) coBtn.addEventListener('click', function(){ openCompanyContacts(c.company); });
+  }, 50);
