@@ -247,7 +247,7 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
       <div class="header-title" id="header-title">Dashboard</div>
       <div class="header-sub" id="header-sub">Good morning</div>
     </div>
-    <button class="header-btn" id="header-action-btn" onclick="openLogSheet(null,null)"><span style="font-size:26px;font-weight:200">+</span></button>
+    <button class="header-btn" id="header-action-btn" onclick="openSheet('add-choice-sheet')"><span style="font-size:26px;font-weight:200">+</span></button>
   </div>
 
   <!-- SCREENS -->
@@ -1235,9 +1235,7 @@ function showToast(msg) {
 
 // ── CALENDAR HEADER ACTION ───────────────────────────────────────────
 document.getElementById('header-action-btn').addEventListener('click', function(){
-  if (_currentTab==='calendar') { openSheet('book-sheet'); return; }
-  if (_currentTab==='pipeline') return;
-  openLogSheet(null,null);
+  openSheet('add-choice-sheet');
 });
 
 
