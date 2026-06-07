@@ -4921,5 +4921,150 @@ document.addEventListener('DOMContentLoaded', function(){
 })();
 </script>
 
+
+
+<style>
+/* ── RANDY V20: safe follow-up taps + restored swipe hints ── */
+.followup-row .swipe-help,
+.cal-event .swipe-help{font-size:10px;color:#9ca3af;margin-top:2px;line-height:1.25}
+.followup-row.v20-right,.cal-event.v20-right{background:#eff6ff!important;transform:translateX(7px);transition:transform .14s,background .14s}
+.followup-row.v20-left,.cal-event.v20-left{background:#f0fdf4!important;transform:translateX(-7px);transition:transform .14s,background .14s}
+</style>
+<script>
+// ── RANDY V20: fixes accidental opens while scrolling/swiping and restores swipe instructions.
+(function(){
+  function txt(v){ return String(v == null ? '' : v).trim(); }
+  function esc(s){ return txt(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function isoToday(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function dateKey(v){
+    if (!v) return '';
+    if (typeof v === 'string') {
+      var s=v.trim();
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substr(0,10);
+      var m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+      if (m){ var y=Number(m[3]); if(y<100)y+=2000; return y+'-'+String(Number(m[1])).padStart(2,'0')+'-'+String(Number(m[2])).padStart(2,'0'); }
+    }
+    var d=new Date(v); if (isNaN(d)) return txt(v).substr(0,10);
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  function minutesFromTime(v){
+    if (v == null || v === '') return 9999;
+    if (typeof v === 'number') return Math.round(v*24*60);
+    var s=txt(v);
+    var d=new Date(s);
+    if (!isNaN(d) && (s.indexOf('T')>-1 || s.indexOf('GMT')>-1)) return d.getHours()*60+d.getMinutes();
+    var m=s.match(/(\d{1,2}):(\d{2})\s*([AP]M)?/i);
+    if (m){ var h=Number(m[1]), mi=Number(m[2]), ap=(m[3]||'').toUpperCase(); if(ap==='PM'&&h<12)h+=12; if(ap==='AM'&&h===12)h=0; return h*60+mi; }
+    return 9999;
+  }
+  function timeLabel(ev){
+    var raw = ev && (ev.time || ev.start || ev.startTime || ev.start_time);
+    var mins = minutesFromTime(raw);
+    if (mins === 9999) return 'Anytime';
+    var h=Math.floor(mins/60)%24, m=mins%60, ap=h>=12?'PM':'AM', hh=h%12||12;
+    return hh+':'+String(m).padStart(2,'0')+' '+ap;
+  }
+  function typeLabel(type){
+    var t=txt(type).toLowerCase();
+    if(t==='call') return 'Call'; if(t==='demo') return 'Demo'; if(t==='meeting') return 'Meeting'; if(t==='follow') return 'Follow-Up'; if(t==='deadline') return 'Deadline';
+    return 'Appointment';
+  }
+  function companyFromEvent(ev){
+    var c=txt(ev && ev.company); if(c) return c;
+    var title=txt(ev && ev.title);
+    var parts=title.split(' - '); if(parts.length>1) return parts.slice(1).join(' - ');
+    var parts2=title.split(':'); if(parts2.length>1) return parts2.slice(1).join(':').trim();
+    return txt(ev && ev.contact) || 'Unknown';
+  }
+  function agendaTitle(ev){ return typeLabel(ev && ev.type) + ': ' + companyFromEvent(ev); }
+  function dayLabel(ev){
+    var k=dateKey(ev && ev.date), t=isoToday();
+    if(k===t) return 'Today';
+    var d=new Date(k+'T12:00:00'); if(isNaN(d)) return k || 'Date';
+    var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return mo[d.getMonth()]+' '+d.getDate();
+  }
+  function haptic(){ try{ if(typeof hapticTap==='function') hapticTap(); else if(navigator.vibrate) navigator.vibrate(8); }catch(e){} }
+  function safeSwipe(row, opts){
+    var sx=0, sy=0, active=false, moved=false, swipeLocked=false, maxDx=0, maxDy=0, startedAt=0;
+    function start(x,y){ sx=x; sy=y; active=true; moved=false; swipeLocked=false; maxDx=0; maxDy=0; startedAt=Date.now(); }
+    function move(x,y){
+      if(!active) return;
+      var dx=x-sx, dy=y-sy;
+      maxDx=Math.max(maxDx,Math.abs(dx)); maxDy=Math.max(maxDy,Math.abs(dy));
+      if(maxDy>10 || maxDx>8) moved=true;
+      if(maxDx>14 && maxDx>maxDy*1.35) swipeLocked=true;
+      if(swipeLocked){
+        var limited=Math.max(-72,Math.min(72,dx));
+        row.style.transform='translateX('+limited+'px)';
+      }
+    }
+    function end(x,y,ev){
+      if(!active) return;
+      active=false;
+      var dx=x-sx, dy=y-sy;
+      row.style.transform='';
+      var horizontal = Math.abs(dx)>58 && Math.abs(dx)>Math.abs(dy)*1.35;
+      var cleanTap = !moved && Math.abs(dx)<8 && Math.abs(dy)<8 && (Date.now()-startedAt)<600;
+      if(horizontal){
+        if(ev){ ev.preventDefault(); ev.stopPropagation(); }
+        var cls=dx>0?'v20-right':'v20-left'; row.classList.add(cls); setTimeout(function(){ row.classList.remove(cls); },160);
+        haptic();
+        if(dx>0 && opts.right) opts.right();
+        if(dx<0 && opts.left) opts.left();
+        return;
+      }
+      if(cleanTap && opts.tap){ opts.tap(); }
+    }
+    row.addEventListener('touchstart',function(e){ if(e.touches&&e.touches[0]) start(e.touches[0].clientX,e.touches[0].clientY); },{passive:true});
+    row.addEventListener('touchmove',function(e){ if(e.touches&&e.touches[0]) move(e.touches[0].clientX,e.touches[0].clientY); },{passive:true});
+    row.addEventListener('touchend',function(e){ var t=e.changedTouches&&e.changedTouches[0]; if(t) end(t.clientX,t.clientY,e); },{passive:false});
+    row.addEventListener('mousedown',function(e){ start(e.clientX,e.clientY); });
+    row.addEventListener('mousemove',function(e){ if(active) move(e.clientX,e.clientY); });
+    row.addEventListener('mouseup',function(e){ end(e.clientX,e.clientY,e); });
+    row.addEventListener('mouseleave',function(e){ if(active) end(e.clientX||sx,e.clientY||sy,e); });
+  }
+  function openAccount(ev){ if(typeof window.openFollowupAssociatedAccount==='function') window.openFollowupAssociatedAccount(ev); }
+  function openEvent(ev){ if(typeof openBookSheetForEvent==='function') openBookSheetForEvent(ev.id); }
+
+  window.renderFollowUpsToday = function(){
+    var list=document.getElementById('followup-list'), countEl=document.getElementById('followup-count'); if(!list) return;
+    var today=isoToday();
+    var events=(window.CAL_EVENTS||[]).filter(function(e){ return e && !e.completed && dateKey(e.date)===today; });
+    events.sort(function(a,b){ return minutesFromTime(a.time||a.start||a.startTime)-minutesFromTime(b.time||b.start||b.startTime); });
+    if(countEl){ countEl.textContent=events.length||''; countEl.style.display=events.length?'inline-flex':'none'; }
+    if(!events.length){ list.innerHTML='<div class="empty" style="padding:20px"><p>No calls or appointments scheduled for today</p></div>'; return; }
+    var iconMap={call:'📞',follow:'⏰',demo:'🖥',meeting:'👥',deadline:'⚠️',appointment:'📅'};
+    var colorMap={call:['#dcfce7','#15803d'],follow:['#fef3c7','#b45309'],demo:['#dbeafe','#1d4ed8'],meeting:['#ede9fe','#6d28d9'],deadline:['#fee2e2','#b91c1c'],appointment:['#f3f4f6','#6b7280']};
+    list.innerHTML='';
+    events.forEach(function(ev){
+      var colors=colorMap[ev.type]||colorMap.appointment;
+      var row=document.createElement('div'); row.className='list-item followup-row'; row.style.cursor='pointer';
+      row.innerHTML='<div class="avatar avatar-sm" style="background:'+colors[0]+';color:'+colors[1]+'">'+(iconMap[ev.type]||'📅')+'</div>'+
+        '<div class="item-main"><div class="item-name">'+esc(agendaTitle(ev))+'</div><div class="item-sub">'+esc(dayLabel(ev)+' • '+timeLabel(ev))+'</div><div class="swipe-help">Tap/Open Account · Swipe right/Edit appointment · Swipe left/Open account</div></div>'+
+        '<span style="font-style:normal;color:#d1d5db;font-size:18px">›</span>';
+      safeSwipe(row,{tap:function(){openAccount(ev);},right:function(){openEvent(ev);},left:function(){openAccount(ev);}});
+      list.appendChild(row);
+    });
+  };
+
+  // Restore subtle swipe instructions on Calendar rows after Calendar renders.
+  var oldRenderCal = window.renderCalEvents;
+  if (typeof oldRenderCal === 'function') {
+    window.renderCalEvents = function(){
+      oldRenderCal.apply(this, arguments);
+      document.querySelectorAll('#cal-events-list .cal-event').forEach(function(row){
+        var box=row.querySelector('div[style*="flex:1"]') || row.querySelector('div:nth-child(2)');
+        if(box && !box.querySelector('.swipe-help')){
+          var note=document.createElement('div'); note.className='swipe-help'; note.textContent='Swipe right/Complete · Swipe left/Reschedule'; box.appendChild(note);
+        }
+      });
+    };
+  }
+
+  setTimeout(function(){ if(typeof window.renderFollowUpsToday==='function') window.renderFollowUpsToday(); if(typeof calRender==='function') calRender(); },250);
+})();
+</script>
+
 </body>
 </html>
