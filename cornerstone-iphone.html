@@ -774,7 +774,8 @@ function handleOffline(action, data, cb) {
   } else if (action === 'saveDeal') {
     cb({ok:true});
   } else if (action === 'saveCalEvent') {
-    cb({ok:true});
+    if (data && data.event) upsertCalendarEventLocal(data.event);
+    cb({ok:true, offline:true});
   } else {
     cb({ok:true});
   }
@@ -823,6 +824,14 @@ document.addEventListener('DOMContentLoaded', function() {
     var el = document.getElementById(id);
     if (el) el.addEventListener('input', updateBookDayAvailability);
     if (el) el.addEventListener('change', updateBookDayAvailability);
+  });
+  var bookTypeEl = document.getElementById('book-type');
+  var bookContactEl = document.getElementById('book-contact');
+  var bookTitleEl = document.getElementById('book-title');
+  if (bookTypeEl) bookTypeEl.addEventListener('change', function(){ updateAutoBookTitle(false); });
+  if (bookContactEl) bookContactEl.addEventListener('input', function(){ updateAutoBookTitle(false); });
+  if (bookTitleEl) bookTitleEl.addEventListener('input', function(){
+    _bookTitleAutoMode = !bookTitleEl.value.trim() || bookTitleEl.value.trim() === _lastAutoBookTitle;
   });
 });
 
@@ -1050,23 +1059,30 @@ function loadFromSheets(cb) {
 
   // Load calendar events
   sheetsAPI('getCalendar', {}, function(data) {
+    var localEvents = loadStoredCalendarEvents();
+    var sheetEvents = [];
     if (data && data.ok && data.events && data.events.length) {
-      CAL_EVENTS = data.events.map(function(e) {
-        return {
+      sheetEvents = data.events.map(function(e) {
+        return normalizeCalEvent({
           id:      e.id,
           date:    e.date    || '',
           title:   e.title   || '',
           type:    e.type    || 'call',
           time:    e.time    || '',
+          start:   e.start   || '',
+          end:     e.end     || '',
           contact: e.contact || '',
           company: e.company || '',
           notes:   e.notes   || ''
-        };
-      });
-      // Re-render calendar now that events are loaded
-      calRender();
-      check(true);
-    } else { check(false); }
+        });
+      }).filter(Boolean);
+    }
+    CAL_EVENTS = mergeCalendarEvents(sheetEvents, localEvents);
+    saveStoredCalendarEvents();
+    calRender();
+    updateTodayFocus();
+    renderFollowUpsToday();
+    check(CAL_EVENTS.length > 0);
   });
 
   // Load recent activity for dashboard
@@ -1674,6 +1690,69 @@ function moveDeal(id) { // legacy compat
 // ── CALENDAR ─────────────────────────────────────────────────────────
 var CAL_EVENTS = [];
 
+// ── RANDY V13: Calendar persistence safety net ─────────────────────
+// Saves appointments to this device immediately, while still sending them to Google Sheets.
+// This prevents newly scheduled events from disappearing if the Sheets save fails or times out.
+var CAL_STORE_KEY = 'cornerstone_calendar_events_v13';
+
+function normalizeCalEvent(e) {
+  if (!e) return null;
+  return {
+    id: e.id || ('local-' + Date.now() + '-' + Math.floor(Math.random()*10000)),
+    date: e.date || '',
+    title: e.title || '',
+    type: e.type || 'call',
+    time: e.time || '',
+    start: e.start || '',
+    end: e.end || '',
+    contact: e.contact || '',
+    company: e.company || '',
+    notes: e.notes || ''
+  };
+}
+
+function loadStoredCalendarEvents() {
+  try {
+    var raw = localStorage.getItem(CAL_STORE_KEY);
+    if (!raw) return [];
+    var arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.map(normalizeCalEvent).filter(Boolean);
+  } catch(e) { return []; }
+}
+
+function saveStoredCalendarEvents() {
+  try { localStorage.setItem(CAL_STORE_KEY, JSON.stringify(CAL_EVENTS || [])); } catch(e) {}
+}
+
+function mergeCalendarEvents(sheetEvents, localEvents) {
+  var map = {};
+  (sheetEvents || []).concat(localEvents || []).forEach(function(e){
+    var ev = normalizeCalEvent(e);
+    if (!ev) return;
+    map[String(ev.id)] = Object.assign({}, map[String(ev.id)] || {}, ev);
+  });
+  return Object.values(map).sort(function(a,b){ return String(a.date).localeCompare(String(b.date)) || String(a.time).localeCompare(String(b.time)); });
+}
+
+function upsertCalendarEventLocal(ev) {
+  ev = normalizeCalEvent(ev);
+  if (!ev) return;
+  var idx = CAL_EVENTS.findIndex(function(e){ return String(e.id) === String(ev.id); });
+  if (idx >= 0) CAL_EVENTS[idx] = Object.assign({}, CAL_EVENTS[idx], ev);
+  else CAL_EVENTS.push(ev);
+  saveStoredCalendarEvents();
+}
+
+function saveCalendarEventEverywhere(ev, cb) {
+  upsertCalendarEventLocal(ev);
+  sheetsAPI('saveCalEvent', {event: ev}, function(resp){
+    // Google Sheets save is controlled by Apps Script. Local save always happens immediately.
+    if (resp && resp.ok === false) showToast('Saved here, but Sheets did not confirm');
+    if (cb) cb(resp);
+  });
+}
+
 var calYear = 2026, calMonth = 5;
 var calSelectedDate = null;
 
@@ -1917,15 +1996,14 @@ function createNextActionEvent(contact, company, notes) {
   var ev = {
     id: 'next-' + Date.now(),
     date: nextDate,
-    title: _selectedNextAction + (contact ? ' - ' + contact : ''),
+    title: buildEventTitle(nextActionType(_selectedNextAction), company || '', contact || ''),
     type: nextActionType(_selectedNextAction),
     time: '',
     contact: contact || '',
     company: company || '',
     notes: notes || ''
   };
-  CAL_EVENTS.push(ev);
-  sheetsAPI('saveCalEvent', {event: ev}, function(){});
+  saveCalendarEventEverywhere(ev, function(){});
   updateNavBadges();
   updateTodayFocus();
   if (_currentTab === 'calendar') calRender();
@@ -2001,14 +2079,42 @@ function saveLog() {
 // ── BOOKING ──────────────────────────────────────────────────────────
 var _editingEventId = null;
 var _bookCompanyContext = '';
+var _bookTitleAutoMode = true;
+var _lastAutoBookTitle = '';
+
+function eventTypeLabel(type) {
+  var labels = {call:'Call', demo:'Demo', meeting:'Meeting', follow:'Follow-Up', deadline:'Deadline'};
+  return labels[type] || String(type || 'Event').replace(/^./, function(c){ return c.toUpperCase(); });
+}
+
+function buildEventTitle(type, company, contact) {
+  var who = (company || contact || '').trim();
+  return who ? eventTypeLabel(type) + ' - ' + who : eventTypeLabel(type);
+}
+
+function updateAutoBookTitle(force) {
+  var titleEl = document.getElementById('book-title');
+  var typeEl = document.getElementById('book-type');
+  var contactEl = document.getElementById('book-contact');
+  if (!titleEl || !typeEl) return;
+  var autoTitle = buildEventTitle(typeEl.value, _bookCompanyContext || '', contactEl ? contactEl.value : '');
+  var current = titleEl.value.trim();
+  if (force || _bookTitleAutoMode || !current || current === _lastAutoBookTitle) {
+    titleEl.value = autoTitle;
+    _bookTitleAutoMode = true;
+  }
+  _lastAutoBookTitle = autoTitle;
+}
 
 function openBookSheet(contact, company) {
   _editingEventId = null;
   _bookCompanyContext = company || '';
   var today = new Date().toISOString().split('T')[0];
-  document.getElementById('book-title').value = company ? 'Follow-up with ' + company : '';
+  _bookTitleAutoMode = true;
+  _lastAutoBookTitle = '';
   document.getElementById('book-type').value = 'call';
   document.getElementById('book-contact').value = contact || '';
+  updateAutoBookTitle(true);
   document.getElementById('book-date').value = today;
   document.getElementById('book-start').value = '';
   document.getElementById('book-end').value = '';
@@ -2185,9 +2291,11 @@ function openBookSheetForEvent(id) {
   var ev = CAL_EVENTS.find(function(e){ return String(e.id) === String(id); });
   if (!ev) { showToast('Event not found'); return; }
   _bookCompanyContext = ev.company || '';
-  document.getElementById('book-title').value = ev.title || '';
   document.getElementById('book-type').value = ev.type || 'call';
   document.getElementById('book-contact').value = ev.contact || '';
+  _lastAutoBookTitle = buildEventTitle(ev.type || 'call', ev.company || '', ev.contact || '');
+  _bookTitleAutoMode = !ev.title || ev.title === _lastAutoBookTitle;
+  document.getElementById('book-title').value = ev.title || _lastAutoBookTitle;
   document.getElementById('book-date').value = ev.date || new Date().toISOString().split('T')[0];
   document.getElementById('book-start').value = ev.start || time12To24(ev.time || '');
   document.getElementById('book-end').value = ev.end || '';
@@ -2200,14 +2308,20 @@ function openBookSheetForEvent(id) {
 
 function saveBooking() {
   hapticTap();
-  var title   = document.getElementById('book-title').value.trim();
+  var titleEl = document.getElementById('book-title');
   var date    = document.getElementById('book-date').value;
   var contact = document.getElementById('book-contact').value.trim();
   var type    = document.getElementById('book-type').value;
+  var title   = titleEl.value.trim();
   var start   = document.getElementById('book-start').value;
   var end     = document.getElementById('book-end').value;
   var notes   = document.getElementById('book-notes').value.trim();
   var company = _bookCompanyContext || '';
+  var autoTitle = buildEventTitle(type, company, contact);
+  if (!title || _bookTitleAutoMode || title === _lastAutoBookTitle) {
+    title = autoTitle;
+    titleEl.value = title;
+  }
   if (!title||!date) { showToast('Please add a title and date'); return; }
 
   // Warn if the selected time overlaps another appointment on the same day.
@@ -2228,15 +2342,7 @@ function saveBooking() {
     contact: contact, company: company, notes: notes
   };
 
-  if (_editingEventId) {
-    var idx = CAL_EVENTS.findIndex(function(e){ return String(e.id) === String(_editingEventId); });
-    if (idx >= 0) CAL_EVENTS[idx] = Object.assign({}, CAL_EVENTS[idx], ev);
-    else CAL_EVENTS.push(ev);
-  } else {
-    CAL_EVENTS.push(ev);
-  }
-
-  sheetsAPI('saveCalEvent',{event:ev},function(){});
+  saveCalendarEventEverywhere(ev, function(){});
   calSelectedDate = date;
   if (_currentTab==='calendar') calRender();
   updateTodayFocus();
