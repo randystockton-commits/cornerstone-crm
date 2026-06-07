@@ -915,6 +915,12 @@ function openContactDetail(name) {
 
 function renderContactDetail(c, log) {
   _detailContact = c;
+  console.log('renderContactDetail:', JSON.stringify({
+    name: c.name, phone: c.phone, mobile: c.mobile,
+    email: c.email, title: c.title, company: c.company,
+    address: c.address, city: c.city, state: c.state,
+    keys: Object.keys(c)
+  }));
   var typeColors = {call:['#dcfce7','#15803d'],email:['#dbeafe','#1d4ed8'],meeting:['#ede9fe','#6d28d9'],voicemail:['#fef3c7','#b45309'],note:['#f3f4f6','#6b7280'],demo:['#dbeafe','#1d4ed8']};
   var iconMap    = {call:'📞',email:'✉',meeting:'🤝',voicemail:'📬',note:'📝',demo:'🖥'};
 
@@ -1519,9 +1525,15 @@ function openSheet(id) {
 function closeSheet(id) {
   var el = document.getElementById(id);
   if (el) el.classList.remove('open');
-  // Only clear overflow if no other sheets are open
   if (!document.querySelector('.sheet-overlay.open')) {
     document.body.style.overflow = '';
+  }
+  // Reset new contact form if company sheet closed
+  if (id === 'add-company-sheet') {
+    var ncForm = document.getElementById('co-new-contact-form');
+    if (ncForm) ncForm.style.display = 'none';
+    var ncBtn = document.getElementById('co-add-new-btn');
+    if (ncBtn) ncBtn.style.display = 'block';
   }
 }
 
@@ -1611,10 +1623,7 @@ function openCompanyContacts(companyName) {
   var addBtn = document.getElementById('co-contacts-add');
   addBtn.onclick = function(){
     closeSheet('co-contacts-ov');
-    document.getElementById('ac-company').value = companyName;
-    var titleEl = document.querySelector('#add-contact-sheet .sheet-title');
-    if (titleEl) titleEl.textContent = 'Add Contact';
-    openSheet('add-contact-sheet');
+    openLinkOrAddContact(companyName);
   };
   openSheet('co-contacts-ov');
 }
@@ -1705,6 +1714,212 @@ function formatPhoneVal(val) {
   return val; // return original if not 10 digits
 }
 
+
+
+// Track contacts being added to the new company
+var _newCoContacts = []; // array of contact objects
+
+function toggleNewContactInline() {
+  var form = document.getElementById('co-new-contact-form');
+  var btn  = document.getElementById('co-add-new-btn');
+  if (form.style.display === 'none') {
+    form.style.display = 'block';
+    btn.style.display  = 'none';
+    document.getElementById('nc-name').focus();
+  } else {
+    form.style.display = 'none';
+    btn.style.display  = 'block';
+    ['nc-name','nc-title','nc-phone','nc-mobile','nc-email'].forEach(function(id){
+      var el = document.getElementById(id); if(el) el.value='';
+    });
+  }
+}
+
+function addInlineContact() {
+  var name = (document.getElementById('nc-name').value||'').trim();
+  if (!name) { showToast('Contact name required'); return; }
+  var ini    = name.split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().substr(0,2);
+  var colors = [['#dbeafe','#1d4ed8'],['#dcfce7','#15803d'],['#ede9fe','#6d28d9'],['#fef3c7','#b45309']];
+  var col    = colors[_newCoContacts.length % colors.length];
+  var newC   = {
+    id:        Date.now().toString(36),
+    name:      name,
+    nameLower: name.toLowerCase(),
+    title:     document.getElementById('nc-title').value||'',
+    phone:     document.getElementById('nc-phone').value||'',
+    mobile:    document.getElementById('nc-mobile').value||'',
+    email:     document.getElementById('nc-email').value||'',
+    company:   (document.getElementById('co-name').value||'').trim(),
+    address:   '',
+    city:      '',
+    state:     '',
+    zip:       '',
+    role:      document.getElementById('nc-role').value||'Decision Maker',
+    prefer:    document.getElementById('nc-prefer').value||'Call',
+    bg: col[0], fg: col[1], initials: ini,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    updatedBy: CURRENT_SESSION ? CURRENT_SESSION.username : 'user',
+  };
+  _newCoContacts.push(newC);
+  renderLinkedContacts();
+  toggleNewContactInline();
+  showToast(name + ' added ✓');
+}
+
+function linkExistingToCompany(contact) {
+  // Check not already linked
+  if (_newCoContacts.find(function(c){ return c.name===contact.name; })) {
+    showToast(contact.name + ' already added');
+    return;
+  }
+  _newCoContacts.push(contact);
+  renderLinkedContacts();
+  document.getElementById('co-contact').value = '';
+  document.getElementById('co-contact-results').style.display = 'none';
+  showToast(contact.name + ' linked ✓');
+}
+
+function removeLinkedContact(name) {
+  _newCoContacts = _newCoContacts.filter(function(c){ return c.name !== name; });
+  renderLinkedContacts();
+}
+
+function renderLinkedContacts() {
+  var el = document.getElementById('co-linked-contacts');
+  if (!el) return;
+  if (!_newCoContacts.length) { el.innerHTML = ''; return; }
+  el.innerHTML = '';
+  _newCoContacts.forEach(function(c) {
+    var chip = document.createElement('div');
+    chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:20px;padding:4px 10px 4px 6px;margin:0 6px 6px 0';
+    chip.innerHTML = '<div class="avatar" style="width:24px;height:24px;font-size:10px;background:'+c.bg+';color:'+c.fg+'">'+c.initials+'</div>'
+      + '<span style="font-size:13px;font-weight:600;color:var(--blue)">'+c.name+'</span>';
+    var removeBtn = document.createElement('button');
+    removeBtn.style.cssText = 'background:none;border:none;cursor:pointer;color:#9ca3af;font-size:16px;line-height:1;padding:0 0 0 2px';
+    removeBtn.textContent = '×';
+    (function(n){ removeBtn.addEventListener('click', function(){ removeLinkedContact(n); }); })(c.name);
+    chip.appendChild(removeBtn);
+    el.appendChild(chip);
+  });
+}
+
+// Update searchCoContact to use linkExistingToCompany
+function searchCoContact(val) {
+  var res = document.getElementById('co-contact-results');
+  if (!val.trim()) { res.style.display='none'; return; }
+  var matches = CONTACTS.filter(function(c){
+    return (c.name||'').toLowerCase().includes(val.toLowerCase());
+  }).slice(0, 6);
+  if (!matches.length) { res.style.display='none'; return; }
+  res.style.display = 'block';
+  res.innerHTML = '';
+  matches.forEach(function(c) {
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #f3f4f6;cursor:pointer';
+    row.innerHTML = '<div class="avatar avatar-sm" style="background:'+(c.bg||'#f3f4f6')+';color:'+(c.fg||'#374151')+'">'+(c.initials||'?')+'</div>'
+      + '<div style="flex:1"><div style="font-size:14px;font-weight:600">'+c.name+'</div>'
+      + '<div style="font-size:12px;color:var(--gray)">'+(c.title||'')+(c.company?' · '+c.company:'')+'</div></div>'
+      + '<span style="font-size:12px;font-weight:700;color:var(--blue)">+ Link</span>';
+    row.addEventListener('click', function(){ linkExistingToCompany(c); });
+    res.appendChild(row);
+  });
+}
+
+
+function openLinkOrAddContact(companyName) {
+  // Show a sheet to either link existing contact or add new one
+  var ov = document.getElementById('link-contact-ov');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.className = 'sheet-overlay';
+    ov.id = 'link-contact-ov';
+    ov.innerHTML = '<div class="sheet"><div class="sheet-handle"></div>'
+      + '<div class="sheet-header"><div class="sheet-title" id="link-contact-title">Add Contact</div>'
+      + '<button class="sheet-close" id="link-contact-close" style="font-size:18px">✕</button></div>'
+      + '<div class="sheet-body">'
+        + '<div class="form-group">'
+          + '<label class="form-label">Search Existing Contacts</label>'
+          + '<input class="form-input" type="text" id="link-search" placeholder="Type a name…" autocomplete="off">'
+          + '<div id="link-search-results" style="display:none;border:1.5px solid var(--border);border-radius:12px;margin-top:6px;max-height:200px;overflow-y:auto;background:#fff"></div>'
+        + '</div>'
+        + '<div style="text-align:center;color:var(--gray);font-size:13px;margin:4px 0 12px">— or —</div>'
+        + '<button class="btn btn-primary btn-block" id="link-add-new">+ Add Brand New Contact</button>'
+      + '</div>'
+    + '</div>';
+    ov.addEventListener('click', function(e){ if(e.target===ov) closeSheet('link-contact-ov'); });
+    document.body.appendChild(ov);
+    document.getElementById('link-contact-close').addEventListener('click', function(){ closeSheet('link-contact-ov'); });
+  }
+
+  document.getElementById('link-contact-title').textContent = companyName + ' — Add Contact';
+  document.getElementById('link-search').value = '';
+  document.getElementById('link-search-results').style.display = 'none';
+
+  // Wire search
+  document.getElementById('link-search').oninput = function() {
+    var val = this.value;
+    var res = document.getElementById('link-search-results');
+    if (!val.trim()) { res.style.display='none'; return; }
+    var matches = CONTACTS.filter(function(c){
+      return (c.name||'').toLowerCase().includes(val.toLowerCase());
+    }).slice(0,8);
+    if (!matches.length) { res.style.display='none'; return; }
+    res.style.display = 'block';
+    res.innerHTML = '';
+    matches.forEach(function(c) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #f3f4f6;cursor:pointer';
+      row.innerHTML = '<div class="avatar avatar-sm" style="background:'+(c.bg||'#f3f4f6')+';color:'+(c.fg||'#374151')+'">'+(c.initials||'?')+'</div>'
+        + '<div style="flex:1"><div style="font-size:14px;font-weight:600">'+c.name+'</div>'
+        + '<div style="font-size:12px;color:var(--gray)">'+(c.title||'')+(c.company?' · <span style="color:var(--amber)">'+c.company+'</span>':'<span style="color:var(--green)">No company</span>')+'</div></div>'
+        + '<span style="font-size:12px;font-weight:600;color:var(--blue)">Link</span>';
+      row.addEventListener('click', function(){
+        // Link this contact to the company
+        c.company = companyName;
+        sheetsAPI('saveContact', {contact: c}, function(){});
+        // Update local CONTACTS array
+        var idx2 = CONTACTS.findIndex(function(x){ return x.name===c.name; });
+        if (idx2 >= 0) CONTACTS[idx2] = c;
+        closeSheet('link-contact-ov');
+        showToast(c.name + ' linked to ' + companyName + ' ✓');
+        // Refresh company contacts view
+        setTimeout(function(){ openCompanyContacts(companyName); }, 100);
+      });
+      res.appendChild(row);
+    });
+  };
+
+  // Wire add new button
+  document.getElementById('link-add-new').onclick = function(){
+    closeSheet('link-contact-ov');
+    // Clear name and title, pre-fill company info
+    document.getElementById('ac-name').value    = '';
+    document.getElementById('ac-title').value   = '';
+    document.getElementById('ac-company').value = companyName;
+    // Look up company data to pre-fill address etc
+    var coData = CONTACTS.find(function(c){ return (c.company||'').toLowerCase()===companyName.toLowerCase(); });
+    if (coData) {
+      document.getElementById('ac-phone').value   = '';
+      document.getElementById('ac-mobile').value  = '';
+      document.getElementById('ac-email').value   = '';
+      document.getElementById('ac-address').value = coData.address || '';
+      document.getElementById('ac-city').value    = coData.city    || '';
+      document.getElementById('ac-state').value   = coData.state   || '';
+      document.getElementById('ac-zip').value     = coData.zip     || '';
+    } else {
+      ['ac-phone','ac-mobile','ac-email','ac-address','ac-city','ac-state','ac-zip'].forEach(function(id){
+        var el = document.getElementById(id); if(el) el.value='';
+      });
+    }
+    var titleEl = document.querySelector('#add-contact-sheet .sheet-title');
+    if (titleEl) titleEl.textContent = 'Add Contact to ' + companyName;
+    setTimeout(function(){ openSheet('add-contact-sheet'); document.getElementById('ac-name').focus(); }, 50);
+  };
+
+  openSheet('link-contact-ov');
+}
+
 // Init calendar
 calRender();
 
@@ -1778,7 +1993,13 @@ function saveNewContact() {
       renderContactDetail(contact, log);
     });
   }
-  showToast(isEdit ? 'Contact updated ✓' : 'Contact saved ✓');
+  if (isEdit) {
+    showToast('Contact updated ✓');
+  } else {
+    showToast('Contact saved ✓');
+    // Navigate to the new contact detail screen
+    setTimeout(function(){ openContactDetail(name); }, 150);
+  }
 }
 
 function saveNewCompany() {
@@ -1827,10 +2048,22 @@ function saveNewCompany() {
     updateDashboardMetrics();
   }
 
+  // Save all linked/new contacts with this company name
+  _newCoContacts.forEach(function(c) {
+    c.company = name;
+    var existIdx = CONTACTS.findIndex(function(x){ return x.name===c.name; });
+    if (existIdx >= 0) { CONTACTS[existIdx].company = name; c = CONTACTS[existIdx]; }
+    else { CONTACTS.unshift(c); }
+    sheetsAPI('saveContact', {contact: c}, function(){});
+  });
+  if (_newCoContacts.length) renderContacts();
+  _newCoContacts = [];
+
   closeSheet('add-company-sheet');
   ['co-name','co-accounts','co-rmr','co-value','co-contact','co-notes'].forEach(function(id){
     var el = document.getElementById(id); if(el) el.value='';
   });
+  document.getElementById('co-linked-contacts').innerHTML = '';
 }
 
 </script>
@@ -1986,8 +2219,66 @@ function saveNewCompany() {
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Primary Contact</label>
-        <input class="form-input" type="text" id="co-contact" placeholder="Jane Smith">
+        <label class="form-label">Contacts</label>
+        <!-- Linked contacts display -->
+        <div id="co-linked-contacts" style="margin-bottom:8px"></div>
+        <!-- Search existing -->
+        <input class="form-input" type="text" id="co-contact" placeholder="Search existing contacts…" autocomplete="off" oninput="searchCoContact(this.value)" style="margin-bottom:6px">
+        <div id="co-contact-results" style="display:none;border:1.5px solid var(--border);border-radius:12px;margin-bottom:8px;max-height:160px;overflow-y:auto;background:#fff"></div>
+        <!-- Add new contact inline -->
+        <button type="button" onclick="toggleNewContactInline()" id="co-add-new-btn" style="width:100%;padding:10px;border:1.5px dashed var(--border);border-radius:10px;background:#fff;color:var(--blue);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
+          + Add New Contact to this Company
+        </button>
+        <!-- Inline new contact form (hidden by default) -->
+        <div id="co-new-contact-form" style="display:none;background:#f8faff;border:1.5px solid var(--blue-mid);border-radius:12px;padding:14px;margin-top:8px">
+          <div style="font-size:13px;font-weight:700;color:var(--blue);margin-bottom:10px">New Contact</div>
+          <div class="form-group" style="margin-bottom:10px">
+            <label class="form-label">Full Name *</label>
+            <input class="form-input" type="text" id="nc-name" placeholder="Jane Smith">
+          </div>
+          <div class="form-group" style="margin-bottom:10px">
+            <label class="form-label">Title</label>
+            <input class="form-input" type="text" id="nc-title" placeholder="VP Operations">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Phone</label>
+              <input class="form-input" type="tel" id="nc-phone" placeholder="(555) 000-0000" oninput="formatPhone(this)" maxlength="14">
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Mobile</label>
+              <input class="form-input" type="tel" id="nc-mobile" placeholder="(555) 000-0000" oninput="formatPhone(this)" maxlength="14">
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:10px">
+            <label class="form-label">Email</label>
+            <input class="form-input" type="email" id="nc-email" placeholder="jane@company.com">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Role</label>
+              <select class="form-input form-select" id="nc-role">
+                <option>Decision Maker</option>
+                <option>Champion</option>
+                <option>Influencer</option>
+                <option>Economic Buyer</option>
+                <option>Technical Buyer</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Prefers</label>
+              <select class="form-input form-select" id="nc-prefer">
+                <option>Call</option>
+                <option>Email</option>
+                <option>Text</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button type="button" onclick="addInlineContact()" class="btn btn-primary" style="flex:1">✓ Add Contact</button>
+            <button type="button" onclick="toggleNewContactInline()" class="btn" style="flex:1">Cancel</button>
+          </div>
+        </div>
       </div>
       <div class="form-group">
         <label class="form-label">Notes</label>
