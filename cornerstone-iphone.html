@@ -3571,5 +3571,154 @@ document.addEventListener('DOMContentLoaded', function(){
 })();
 </script>
 
+
+
+<style>
+/* ── RANDY V8 ACCOUNT DATES - easy to revert ── */
+.v8-account-date-line{font-size:11px;color:var(--gray);margin-top:4px;line-height:1.35;white-space:normal}
+.v8-date-label{color:#64748b;font-weight:700}
+.v8-next-date.overdue{color:var(--red);font-weight:800}
+.v8-next-date.today{color:var(--amber);font-weight:800}
+.v8-next-date.future{color:var(--green);font-weight:800}
+.v8-next-date.none{color:#9ca3af;font-weight:800}
+.v8-last-date{font-weight:800;color:#334155}
+</style>
+
+<script>
+// ── RANDY V8 ACCOUNT DATES - calculates real Last Contact and Next Activity dates ──
+(function(){
+  function safeText(v){ return String(v == null ? '' : v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function norm(v){ return String(v||'').toLowerCase().trim(); }
+  function contactsFor(companyName){
+    var key = norm(companyName);
+    return (window.CONTACTS || []).filter(function(c){ return norm(c.company) === key; });
+  }
+  function contactNamesFor(companyName){
+    return contactsFor(companyName).map(function(c){ return norm(c.name); }).filter(Boolean);
+  }
+  function parseDate(v){
+    if (!v) return null;
+    if (v instanceof Date && !isNaN(v)) return new Date(v.getFullYear(), v.getMonth(), v.getDate());
+    var raw = String(v).trim();
+    if (!raw) return null;
+    var months = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11,January:0,February:1,March:2,April:3,May:4,June:5,July:6,August:7,September:8,October:9,November:10,December:11};
+    var clean = raw.replace(/,/g,' ').replace(/\s+/g,' ').trim();
+    var m;
+    if ((m = clean.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return new Date(+m[1], +m[2]-1, +m[3]);
+    if ((m = clean.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/))) return new Date((+m[3] < 100 ? 2000 + +m[3] : +m[3]), +m[1]-1, +m[2]);
+    var parts = clean.split(' ');
+    if (parts.length >= 2 && months[parts[0]] !== undefined) {
+      var yr = parts.length >= 3 && /^\d{4}$/.test(parts[2]) ? +parts[2] : new Date().getFullYear();
+      return new Date(yr, months[parts[0]], parseInt(parts[1],10));
+    }
+    var d = new Date(raw);
+    if (!isNaN(d)) return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    return null;
+  }
+  function key(v){ var d=parseDate(v); return d ? d.getTime() : null; }
+  function todayKey(){ var d=new Date(); return new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime(); }
+  function formatDate(k){
+    if (k == null) return '';
+    var d = new Date(k);
+    var mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return mo[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+  }
+  function dateFromAnyFields(obj, fields){
+    if (!obj) return [];
+    var out = [];
+    fields.forEach(function(f){ var k = key(obj[f]); if (k != null) out.push(k); });
+    // fallback: some Sheets columns may have slightly different headers
+    Object.keys(obj).forEach(function(kname){
+      var lower = kname.toLowerCase();
+      var val = obj[kname];
+      var wantLast = fields.join('|').toLowerCase().indexOf('last') >= 0;
+      var wantNext = fields.join('|').toLowerCase().indexOf('next') >= 0 || fields.join('|').toLowerCase().indexOf('follow') >= 0 || fields.join('|').toLowerCase().indexOf('due') >= 0;
+      if (wantLast && (lower.indexOf('last') >= 0 || lower.indexOf('contacted') >= 0 || lower.indexOf('activity') >= 0)) { var lk=key(val); if(lk!=null) out.push(lk); }
+      if (wantNext && (lower.indexOf('next') >= 0 || lower.indexOf('follow') >= 0 || lower.indexOf('due') >= 0 || lower.indexOf('appointment') >= 0)) { var nk=key(val); if(nk!=null) out.push(nk); }
+    });
+    return out;
+  }
+  function activityFor(companyName){
+    var coKey = norm(companyName), names = contactNamesFor(companyName);
+    return (window.ALL_ACTIVITY || []).filter(function(a){ return norm(a.company) === coKey || names.indexOf(norm(a.contact)) > -1; });
+  }
+  function eventsFor(companyName){
+    var coKey = norm(companyName), names = contactNamesFor(companyName);
+    return (window.CAL_EVENTS || []).filter(function(e){ return norm(e.company) === coKey || names.indexOf(norm(e.contact)) > -1; });
+  }
+  function metaFor(co){
+    var last = [];
+    var next = [];
+    var contacts = contactsFor(co.name);
+    activityFor(co.name).forEach(function(a){
+      var k = key(a.date || a.ts || a.createdAt || a.updatedAt); if (k != null) last.push(k);
+      dateFromAnyFields(a, ['nextActivity','nextActivityDate','nextContact','nextContactDate','followUp','followUpDate','dueDate']).forEach(function(x){ next.push(x); });
+    });
+    eventsFor(co.name).forEach(function(e){
+      var k = key(e.date || e.startDate || e.start || e.when); if (k != null) { next.push(k); if (k <= todayKey()) last.push(k); }
+    });
+    contacts.forEach(function(c){
+      dateFromAnyFields(c, ['lastContact','lastContactDate','lastActivity','lastActivityDate','contacted','updatedAt']).forEach(function(x){ last.push(x); });
+      dateFromAnyFields(c, ['nextActivity','nextActivityDate','nextContact','nextContactDate','followUp','followUpDate','dueDate']).forEach(function(x){ next.push(x); });
+    });
+    dateFromAnyFields(co, ['lastContact','lastContactDate','lastActivity','lastActivityDate','contacted','updatedAt']).forEach(function(x){ last.push(x); });
+    dateFromAnyFields(co, ['nextActivity','nextActivityDate','nextContact','nextContactDate','followUp','followUpDate','dueDate','appointmentDate']).forEach(function(x){ next.push(x); });
+    var tk = todayKey();
+    var lastKey = last.length ? Math.max.apply(null,last) : null;
+    var future = next.filter(function(k){return k >= tk;}).sort(function(a,b){return a-b;});
+    var past = next.filter(function(k){return k < tk;}).sort(function(a,b){return b-a;});
+    var nextKey = future.length ? future[0] : (past.length ? past[0] : null);
+    var status = 'none';
+    if (nextKey != null) status = nextKey < tk ? 'overdue' : (nextKey === tk ? 'today' : 'future');
+    return {lastKey:lastKey,nextKey:nextKey,status:status,contactCount:contacts.length};
+  }
+  function loadCo(cb){ if (typeof loadCompanies === 'function') loadCompanies(cb); else cb(); }
+  window.renderAccounts = function(filter){
+    window._lastAccountSearch = filter || '';
+    if (typeof build6LoadAccountPrefs === 'function') build6LoadAccountPrefs();
+    loadCo(function(){
+      var list = document.getElementById('accounts-list'); if(!list) return;
+      var q = norm(filter);
+      var companies = (window.COMPANIES || []).slice();
+      if (q) companies = companies.filter(function(c){ return norm((c.name||'')+' '+(c.software||'')+' '+(c.city||'')+' '+(c.state||'')).indexOf(q)>-1; });
+      var filters = window._accountFilters || {overdue:true,today:true,future:true,none:true};
+      var sort = window._accountSort || 'nextAsc';
+      var rows = companies.map(function(co){ return {co:co, meta:metaFor(co)}; }).filter(function(r){ return !!filters[r.meta.status]; });
+      rows.sort(function(a,b){
+        var an=String(a.co.name||''), bn=String(b.co.name||''), max=9999999999999;
+        if (sort==='az') return an.localeCompare(bn);
+        if (sort==='nextDesc') return (b.meta.nextKey||0)-(a.meta.nextKey||0) || an.localeCompare(bn);
+        if (sort==='lastOldest') return (a.meta.lastKey||max)-(b.meta.lastKey||max) || an.localeCompare(bn);
+        if (sort==='lastNewest') return (b.meta.lastKey||0)-(a.meta.lastKey||0) || an.localeCompare(bn);
+        return (a.meta.nextKey||max)-(b.meta.nextKey||max) || an.localeCompare(bn);
+      });
+      if(!rows.length){ list.innerHTML='<div class="empty" style="padding:30px"><p>No accounts match this view</p></div>'; return; }
+      list.innerHTML='';
+      rows.forEach(function(r){
+        var co=r.co, meta=r.meta, contacts=contactsFor(co.name);
+        var primary=contacts.find(function(c){return c.isPrimary==='TRUE'||c.isPrimary===true;}) || contacts[0];
+        var ini=String(co.name||'?').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().substr(0,2);
+        var sub=[]; if(primary&&primary.name) sub.push(primary.name); if(contacts.length) sub.push(contacts.length+' contact'+(contacts.length===1?'':'s'));
+        var lastText = meta.lastKey ? formatDate(meta.lastKey) : 'Never';
+        var nextText = meta.nextKey ? formatDate(meta.nextKey) : 'Not Scheduled';
+        var row=document.createElement('div'); row.className='list-item'; row.style.cursor='pointer';
+        row.innerHTML=''
+          + '<div class="avatar" style="background:#fef3c7;color:#b45309">'+safeText(ini)+'</div>'
+          + '<div class="item-main">'
+            + '<div class="item-name">'+safeText(co.name||'Unnamed Account')+'</div>'
+            + '<div class="v7-account-sub">'+safeText(sub.length?sub.join(' · '):'Account')+'</div>'
+            + '<div class="v8-account-date-line"><span class="v8-date-label">Last Contact:</span> <span class="v8-last-date">'+safeText(lastText)+'</span> · <span class="v8-date-label">Next Activity:</span> <span class="v8-next-date '+safeText(meta.status)+'">'+safeText(nextText)+'</span>'+(meta.status==='none'?' ⚠':'')+'</div>'
+          + '</div><span style="font-size:18px;color:#d1d5db;flex-shrink:0">›</span>';
+        row.addEventListener('click',function(){ if(typeof trackRecentlyViewedAccount==='function') trackRecentlyViewedAccount(co.name); openAccountDetail(co.name); });
+        list.appendChild(row);
+      });
+    });
+  };
+  window.filterAccounts = function(val){ window.renderAccounts(val); };
+  // Expose for troubleshooting if needed
+  window.randyV8AccountMeta = metaFor;
+})();
+</script>
+
 </body>
 </html>
