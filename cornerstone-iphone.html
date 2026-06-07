@@ -507,6 +507,7 @@ var SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyPGAmcKlRhcYWZGtMh2M2
 
 var CURRENT_SESSION = null;
 var _detailContact = null;
+var _currentDealId = null;
 var _jsonpCounter = 0;
 var _offlineActivity = [];
 
@@ -670,20 +671,39 @@ function updateDashboardMetrics() {
   var actEl = document.getElementById("dashboard-activity");
   if (actEl && ALL_ACTIVITY.length) {
     var typeColors = {call:["#dcfce7","#15803d"],email:["#dbeafe","#1d4ed8"],meeting:["#ede9fe","#6d28d9"],voicemail:["#fef3c7","#b45309"],note:["#f3f4f6","#6b7280"]};
-    var sorted = ALL_ACTIVITY.slice().sort(function(a,b){ return (Number(b.ts)||0)-(Number(a.ts)||0); });
+    // Group by contact — one row per contact, sorted by most recent activity
+    var contactMap = {};
+    ALL_ACTIVITY.forEach(function(e) {
+      var name = e.contact || '';
+      if (!name) return;
+      var ts = Number(e.ts) || 0;
+      if (!contactMap[name] || ts > contactMap[name].ts) {
+        contactMap[name] = e; // keep most recent entry per contact
+      }
+    });
+    // Sort contacts by most recent activity, newest first
+    var recentContacts = Object.values(contactMap).sort(function(a,b){
+      return (Number(b.ts)||0) - (Number(a.ts)||0);
+    });
     actEl.innerHTML = '';
-    sorted.slice(0,20).forEach(function(e){
+    recentContacts.slice(0,20).forEach(function(e){
       var tc  = typeColors[e.type] || typeColors.note;
-      var ini = (e.contact||'?').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().substr(0,2);
+      // Try to get avatar colors from CONTACTS array
+      var contactObj = CONTACTS.find(function(c){ return c.name === e.contact; });
+      var bg  = contactObj ? contactObj.bg  : tc[0];
+      var fg  = contactObj ? contactObj.fg  : tc[1];
+      var ini = contactObj ? contactObj.initials
+        : (e.contact||'?').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().substr(0,2);
+      var typeLabel = {call:'📞 Call',email:'✉ Email',meeting:'🤝 Meeting',voicemail:'📬 VM',note:'📝 Note',demo:'🖥 Demo'};
       var row = document.createElement('div');
       row.className = 'list-item';
-      if (e.contact) {
-        row.style.cursor = 'pointer';
-        (function(n){ row.addEventListener('click', function(){ openContactDetail(n); }); })(e.contact);
-      }
-      row.innerHTML = '<div class="avatar avatar-sm" style="background:'+tc[0]+';color:'+tc[1]+'">'+ini+'</div>'
-        + '<div class="item-main"><div class="item-name">'+(e.contact||'Unknown')+'</div>'
-        + '<div class="item-sub">'+(e.summary||'').substr(0,55)+((e.summary||'').length>55?'…':'')+'</div></div>'
+      row.style.cursor = 'pointer';
+      (function(n){ row.addEventListener('click', function(){ openContactDetail(n); }); })(e.contact);
+      row.innerHTML = '<div class="avatar avatar-sm" style="background:'+bg+';color:'+fg+'">'+ini+'</div>'
+        + '<div class="item-main">'
+          + '<div class="item-name">'+(e.contact||'Unknown')+'</div>'
+          + '<div class="item-sub">'+(typeLabel[e.type]||'Activity')+' · '+(e.summary||'').substr(0,40)+((e.summary||'').length>40?'…':'')+'</div>'
+        + '</div>'
         + '<div class="item-right"><div class="item-right-label">'+(e.date||'')+'</div></div>';
       actEl.appendChild(row);
     });
@@ -947,36 +967,138 @@ function renderPipeline() {
 function openDealSheet(id) {
   var d = DEALS.find(function(x){ return x.id===id; });
   if (!d) return;
+  _currentDealId = id;
   document.getElementById('deal-sheet-title').textContent = d.name;
-  var stageOpts = STAGES.map(function(s){ return '<option'+(s===d.stage?' selected':'')+'>'+s+'</option>'; }).join('');
-  document.getElementById('deal-sheet-body').innerHTML =
-    '<div class="card" style="margin-bottom:12px">'
-      + infoRow('Company', d.company)
-      + infoRow('Value', '$'+d.value.toLocaleString())
-      + infoRow('Probability', d.prob+'%')
-      + infoRow('Status', d.status||'Active')
-    + '</div>'
-    + '<div class="form-group">'
-      + '<label class="form-label">Move Stage</label>'
-      + '<select class="form-input form-select" id="deal-stage-sel">'+stageOpts+'</select>'
-    + '</div>'
-    + '<button class="btn btn-primary btn-block" onclick="moveDeal('+d.id+')"><span style="font-style:normal;">⇄</span> Move Deal</button>'
-    + '<button class="btn btn-block" style="margin-top:8px" onclick="openLogSheet(\''+d.name.replace(/'/g,"\\'")+'\',\''+d.company.replace(/'/g,"\\'")+'\')">'
-      + '<span style="font-style:normal;">✏</span> Log Activity for this Deal'
-    + '</button>';
+
+  var stageColors = {
+    'Prospecting': '#f3f4f6',
+    'Discovery':   '#dbeafe',
+    'Demo':        '#ede9fe',
+    'Proposal':    '#fef3c7',
+    'Closing':     '#dcfce7',
+    'Won':         '#bbf7d0',
+    'Lost':        '#fee2e2'
+  };
+  var stageTextColors = {
+    'Prospecting': '#374151',
+    'Discovery':   '#1d4ed8',
+    'Demo':        '#6d28d9',
+    'Proposal':    '#b45309',
+    'Closing':     '#15803d',
+    'Won':         '#166534',
+    'Lost':        '#b91c1c'
+  };
+
+  var currentIdx = STAGES.indexOf(d.stage);
+  var canBack    = currentIdx > 0;
+  var canForward = currentIdx < STAGES.length - 1;
+  var prevStage  = canBack    ? STAGES[currentIdx - 1] : null;
+  var nextStage  = canForward ? STAGES[currentIdx + 1] : null;
+
+  // Stage progress dots
+  var progressDots = STAGES.slice(0, -1).map(function(s, i) {
+    var active  = i <= currentIdx;
+    var current = s === d.stage;
+    return '<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1">'
+      + '<div style="width:'+(current?'14px':'10px')+';height:'+(current?'14px':'10px')+';border-radius:50%;background:'+(active?'var(--blue)':'#d1d5db')+';border:'+(current?'2px solid #1a4fa0':'none')+';transition:all .2s"></div>'
+      + '<div style="font-size:9px;color:'+(active?'var(--blue)':'#9ca3af')+';font-weight:'+(current?'700':'400')+';text-align:center;line-height:1.2">'+s+'</div>'
+    + '</div>';
+  }).join('<div style="flex:1;height:2px;background:#e5e7eb;margin-top:6px;margin-bottom:14px"></div>');
+
+  var body = document.getElementById('deal-sheet-body');
+  body.innerHTML = '';
+
+  // Stage indicator
+  var stageDiv = document.createElement('div');
+  stageDiv.style.cssText = 'text-align:center;padding:12px 0 16px';
+  stageDiv.innerHTML = '<div style="display:inline-block;padding:6px 18px;border-radius:20px;background:'+(stageColors[d.stage]||'#f3f4f6')+';color:'+(stageTextColors[d.stage]||'#374151')+';font-size:14px;font-weight:700">'+d.stage+'</div>';
+  body.appendChild(stageDiv);
+
+  // Progress bar
+  var progDiv = document.createElement('div');
+  progDiv.style.cssText = 'display:flex;align-items:flex-start;padding:0 4px 16px;gap:0';
+  progDiv.innerHTML = progressDots;
+  body.appendChild(progDiv);
+
+  // Move buttons
+  var moveDiv = document.createElement('div');
+  moveDiv.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px';
+    // Back button
+  if (prevStage) {
+    var backBtn = document.createElement('button');
+    backBtn.style.cssText = 'padding:14px 10px;border-radius:12px;border:2px solid #e5e7eb;background:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:4px;width:100%';
+    backBtn.innerHTML = '<span style="font-size:20px">←</span><span style="color:#6b7280">Back to</span><span style="color:var(--text)">'+prevStage+'</span>';
+    (function(s){ backBtn.addEventListener('click', function(){ moveDealTo(s); }); })(prevStage);
+    moveDiv.appendChild(backBtn);
+  } else {
+    moveDiv.appendChild(document.createElement('div'));
+  }
+  // Forward button
+  if (nextStage) {
+    var fwdBtn = document.createElement('button');
+    fwdBtn.style.cssText = 'padding:14px 10px;border-radius:12px;border:2px solid var(--blue);background:var(--blue-light);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:4px;width:100%';
+    fwdBtn.innerHTML = '<span style="font-size:20px">→</span><span style="color:var(--blue)">Move to</span><span style="color:var(--blue)">'+nextStage+'</span>';
+    (function(s){ fwdBtn.addEventListener('click', function(){ moveDealTo(s); }); })(nextStage);
+    moveDiv.appendChild(fwdBtn);
+  } else {
+    moveDiv.appendChild(document.createElement('div'));
+  }
+  body.appendChild(moveDiv);
+
+  // Deal info card
+  var infoDiv = document.createElement('div');
+  infoDiv.className = 'card';
+  infoDiv.style.marginBottom = '12px';
+  infoDiv.innerHTML = infoRow('Company', d.company)
+    + infoRow('Value', '$'+(Number(d.value)||0).toLocaleString())
+    + infoRow('Probability', (d.prob||0)+'%')
+    + infoRow('Status', d.status||'Active');
+  body.appendChild(infoDiv);
+
+  // Jump to any stage
+  var jumpDiv = document.createElement('div');
+  jumpDiv.className = 'form-group';
+  jumpDiv.innerHTML = '<label class="form-label">Jump to Stage</label>'
+    + '<select class="form-input form-select" id="deal-stage-sel">'
+    + STAGES.map(function(s){ return '<option'+(s===d.stage?' selected':'')+'>'+s+'</option>'; }).join('')
+    + '</select>';
+  body.appendChild(jumpDiv);
+
+  var jumpBtn = document.createElement('button');
+  jumpBtn.className = 'btn btn-block';
+  jumpBtn.style.marginBottom = '8px';
+  jumpBtn.textContent = 'Jump to Selected Stage';
+  jumpBtn.addEventListener('click', function(){
+    var sel = document.getElementById('deal-stage-sel');
+    if (sel) moveDealTo(sel.value);
+  });
+  body.appendChild(jumpBtn);
+
+  var logBtn = document.createElement('button');
+  logBtn.className = 'btn btn-block';
+  logBtn.textContent = '✏ Log Activity for this Deal';
+  logBtn.addEventListener('click', function(){
+    closeSheet('deal-sheet');
+    setTimeout(function(){ openLogSheet(d.name, d.company); }, 50);
+  });
+  body.appendChild(logBtn);
+
   openSheet('deal-sheet');
 }
 
-function moveDeal(id) {
-  var d = DEALS.find(function(x){ return x.id===id; });
-  var newStage = document.getElementById('deal-stage-sel').value;
-  if (d) {
-    d.stage = newStage;
-    sheetsAPI('saveDeal',{deal:d},function(){});
-    renderPipeline();
-  }
+
+function moveDealTo(newStage) {
+  var d = DEALS.find(function(x){ return String(x.id)===String(_currentDealId); });
+  if (!d) return;
+  d.stage = newStage;
+  sheetsAPI('saveDeal', {deal: d}, function(){});
+  renderPipeline();
   closeSheet('deal-sheet');
-  showToast('Moved to ' + newStage);
+  showToast('Moved to ' + newStage + ' ✓');
+}
+
+function moveDeal(id) { // legacy compat
+  moveDealTo(document.getElementById('deal-stage-sel') ? document.getElementById('deal-stage-sel').value : '');
 }
 
 // ── CALENDAR ─────────────────────────────────────────────────────────
