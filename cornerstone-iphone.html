@@ -520,6 +520,19 @@ var LOCAL_USERS = [
 ];
 
 // ── API ─────────────────────────────────────────────────────────────
+function tryFetch(action, data, cb) {
+  var body = Object.assign({action: action}, data);
+  if (CURRENT_SESSION) body.callerUsername = CURRENT_SESSION.username;
+  fetch(SHEETS_URL, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){ if (cb) cb(d); })
+  .catch(function() { handleOffline(action, data, cb); });
+}
+
 function setSyncStatus(msg, color) {
   var el = document.getElementById('sync-status');
   if (!el) return;
@@ -546,7 +559,8 @@ function sheetsAPI(action, data, cb) {
   s.id = cbName; s.src = SHEETS_URL + params;
   s.onerror = function() {
     delete window[cbName]; s.remove();
-    handleOffline(action, data, cb);
+    // Try fetch as fallback before going offline
+    tryFetch(action, data, cb);
   };
   setTimeout(function(){ if(window[cbName]){ delete window[cbName]; var el=document.getElementById(cbName); if(el)el.remove(); handleOffline(action,data,cb); } }, 8000);
   document.head.appendChild(s);
@@ -687,10 +701,10 @@ function loadFromSheets(cb) {
     if (gotData) hasData = true;
     if (++done >= total) {
       if (hasData) {
-        setSyncStatus('✓ Synced with Google Sheets', 'green');
-        setTimeout(function(){ setSyncStatus('', ''); }, 3000);
+        setSyncStatus('✓ Synced — ' + CONTACTS.length + ' contacts, ' + DEALS.length + ' deals', 'green');
+        setTimeout(function(){ setSyncStatus('', ''); }, 5000);
       } else {
-        setSyncStatus('⚠ Could not reach Google Sheets — open from GitHub to sync', 'red');
+        setSyncStatus('⚠ Connected but no data found — check your Google Sheet has data', 'red');
       }
       if (cb) cb();
     }
@@ -698,6 +712,7 @@ function loadFromSheets(cb) {
 
   // Load contacts
   sheetsAPI('getContacts', {}, function(data) {
+    console.log('getContacts response:', JSON.stringify(data).substr(0,200));
     if (data && data.ok && data.contacts && data.contacts.length) {
       CONTACTS = data.contacts.map(function(c) {
         if (!c.initials) c.initials = (c.name||'').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().substr(0,2);
@@ -705,12 +720,14 @@ function loadFromSheets(cb) {
         if (!c.fg) c.fg = '#374151';
         return c;
       });
+      updateDashboardMetrics(); // update contacts count immediately
       check(true);
     } else { check(false); }
   });
 
   // Load deals
   sheetsAPI('getDeals', {}, function(data) {
+    console.log('getDeals response:', JSON.stringify(data).substr(0,200));
     if (data && data.ok && data.deals && data.deals.length) {
       DEALS = data.deals.map(function(d) {
         return {
@@ -724,6 +741,7 @@ function loadFromSheets(cb) {
           meta:    d.meta    || ''
         };
       });
+      updateDashboardMetrics(); // update immediately when deals load
       check(true);
     } else { check(false); }
   });
@@ -749,8 +767,10 @@ function loadFromSheets(cb) {
 
   // Load recent activity for dashboard
   sheetsAPI('getActivity', {}, function(data) {
+    console.log('getActivity response:', JSON.stringify(data).substr(0,200));
     if (data && data.ok && data.activity && data.activity.length) {
       ALL_ACTIVITY = data.activity;
+      updateDashboardMetrics(); // refresh activity feed immediately
       check(true);
     } else { check(false); }
   });
