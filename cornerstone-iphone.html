@@ -255,26 +255,31 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
 
     <!-- ── DASHBOARD ── -->
     <div class="screen active" id="screen-dashboard">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:12px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.08em">Pipeline Overview</span>
+        <button onclick="refreshDashboard()" style="background:none;border:none;font-size:12px;color:var(--blue);cursor:pointer;padding:4px 8px;font-family:inherit;font-weight:600">↻ Refresh</button>
+      </div>
+      <div id="sync-status" style="display:none;font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:8px;text-align:center"></div>
       <div class="metrics-grid">
         <div class="metric">
-          <div class="metric-label">Pipeline</div>
-          <div class="metric-value" id="db-pipeline">$0</div>
-          <div class="metric-sub" id="db-pipeline-sub"></div>
+          <div class="metric-label">Pipeline Value</div>
+          <div class="metric-value" id="db-pipeline" style="font-size:22px">—</div>
+          <div class="metric-sub" id="db-pipeline-sub">loading…</div>
         </div>
         <div class="metric">
-          <div class="metric-label">June Forecast</div>
-          <div class="metric-value" id="db-forecast">$0</div>
-          <div class="metric-sub" id="db-forecast-sub">vs quota</div>
-        </div>
-        <div class="metric">
-          <div class="metric-label">Total RMR</div>
-          <div class="metric-value" id="db-rmr">$0</div>
-          <div class="metric-sub" id="db-rmr-sub"></div>
+          <div class="metric-label">Weighted</div>
+          <div class="metric-value" id="db-forecast" style="font-size:22px">—</div>
+          <div class="metric-sub" id="db-forecast-sub">loading…</div>
         </div>
         <div class="metric">
           <div class="metric-label">Open Deals</div>
-          <div class="metric-value" id="db-deals">0</div>
+          <div class="metric-value" id="db-deals" style="font-size:22px">—</div>
           <div class="metric-sub">in pipeline</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Contacts</div>
+          <div class="metric-value" id="db-contacts" style="font-size:22px">—</div>
+          <div class="metric-sub">in CRM</div>
         </div>
       </div>
 
@@ -515,6 +520,15 @@ var LOCAL_USERS = [
 ];
 
 // ── API ─────────────────────────────────────────────────────────────
+function setSyncStatus(msg, color) {
+  var el = document.getElementById('sync-status');
+  if (!el) return;
+  el.style.display = msg ? 'block' : 'none';
+  el.style.background = color === 'green' ? '#dcfce7' : color === 'red' ? '#fee2e2' : '#fef3c7';
+  el.style.color = color === 'green' ? '#15803d' : color === 'red' ? '#b91c1c' : '#b45309';
+  el.textContent = msg;
+}
+
 function sheetsAPI(action, data, cb) {
   if (!SHEETS_URL || SHEETS_URL === 'PASTE_YOUR_WEB_APP_URL_HERE') {
     handleOffline(action, data, cb); return;
@@ -534,7 +548,7 @@ function sheetsAPI(action, data, cb) {
     delete window[cbName]; s.remove();
     handleOffline(action, data, cb);
   };
-  setTimeout(function(){ if(window[cbName]){ delete window[cbName]; var el=document.getElementById(cbName); if(el)el.remove(); handleOffline(action,data,cb); } }, 10000);
+  setTimeout(function(){ if(window[cbName]){ delete window[cbName]; var el=document.getElementById(cbName); if(el)el.remove(); handleOffline(action,data,cb); } }, 8000);
   document.head.appendChild(s);
 }
 
@@ -548,7 +562,17 @@ function handleOffline(action, data, cb) {
     cb({ok:true});
   } else if (action === 'getActivity') {
     var log = data.contact ? _offlineActivity.filter(function(e){return e.contact===data.contact;}) : _offlineActivity;
-    cb({ok:true, activity:log});
+    cb({ok:true, activity: log});
+  } else if (action === 'getContacts') {
+    cb({ok:true, contacts: []});
+  } else if (action === 'getDeals') {
+    cb({ok:true, deals: []});
+  } else if (action === 'getCalendar') {
+    cb({ok:true, events: []});
+  } else if (action === 'saveDeal') {
+    cb({ok:true});
+  } else if (action === 'saveCalEvent') {
+    cb({ok:true});
   } else {
     cb({ok:true});
   }
@@ -594,6 +618,25 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ── APP INIT ─────────────────────────────────────────────────────────
+function refreshDashboard() {
+  // Show loading state
+  ['db-pipeline','db-forecast','db-deals','db-contacts'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.textContent = '…';
+  });
+  var subEls = ['db-pipeline-sub','db-forecast-sub'];
+  subEls.forEach(function(id){ var el=document.getElementById(id); if(el) el.textContent='loading…'; });
+
+  loadFromSheets(function() {
+    renderContacts();
+    renderPipeline();
+    renderCalendar();
+    renderActivity();
+    updateDashboardMetrics();
+    showToast('Dashboard refreshed ✓');
+  });
+}
+
 function initApp() {
   loadFromSheets(function() {
     renderContacts();
@@ -605,14 +648,17 @@ function initApp() {
 }
 
 function updateDashboardMetrics() {
-  var active = DEALS.filter(function(d){ return d.stage !== 'Won' && d.stage !== 'Lost'; });
-  var total  = active.reduce(function(s,d){ return s + (Number(d.value)||0); }, 0);
+  var active   = DEALS.filter(function(d){ return d.stage !== 'Won' && d.stage !== 'Lost'; });
+  var total    = active.reduce(function(s,d){ return s + (Number(d.value)||0); }, 0);
   var weighted = active.reduce(function(s,d){ return s + (Number(d.value)||0) * (Number(d.prob)||0) / 100; }, 0);
+  var hot      = active.filter(function(d){ return d.status==='hot'; }).length;
   var el;
-  el = document.getElementById('db-pipeline'); if(el) el.textContent = total ? '$'+(total/1000).toFixed(0)+'K' : '$0';
-  el = document.getElementById('db-deals');    if(el) el.textContent = active.length;
-  el = document.getElementById('db-rmr');      if(el) el.textContent = weighted ? '$'+(weighted/1000).toFixed(0)+'K' : '$0';
-  el = document.getElementById('db-forecast'); if(el) el.textContent = weighted ? '$'+(weighted/1000).toFixed(0)+'K' : '$0';
+  el = document.getElementById('db-pipeline');     if(el) el.textContent = '$'+(total/1000).toFixed(0)+'K';
+  el = document.getElementById('db-pipeline-sub'); if(el) el.textContent = hot+' hot deal'+(hot!==1?'s':'');
+  el = document.getElementById('db-forecast');     if(el) el.textContent = '$'+(weighted/1000).toFixed(0)+'K';
+  el = document.getElementById('db-forecast-sub'); if(el) el.textContent = 'avg '+( active.length ? Math.round(active.reduce(function(s,d){return s+Number(d.prob);},0)/active.length) : 0 )+'% prob';
+  el = document.getElementById('db-deals');        if(el) el.textContent = active.length;
+  el = document.getElementById('db-contacts');     if(el) el.textContent = CONTACTS.length;
   // Recent activity on dashboard
   var actEl = document.getElementById("dashboard-activity");
   if (actEl && ALL_ACTIVITY.length) {
@@ -633,9 +679,22 @@ function updateDashboardMetrics() {
 }
 
 function loadFromSheets(cb) {
+  setSyncStatus('🔄 Connecting to Google Sheets…', 'amber');
   var done = 0;
   var total = 4;
-  function check() { if (++done >= total && cb) cb(); }
+  var hasData = false;
+  function check(gotData) {
+    if (gotData) hasData = true;
+    if (++done >= total) {
+      if (hasData) {
+        setSyncStatus('✓ Synced with Google Sheets', 'green');
+        setTimeout(function(){ setSyncStatus('', ''); }, 3000);
+      } else {
+        setSyncStatus('⚠ Could not reach Google Sheets — open from GitHub to sync', 'red');
+      }
+      if (cb) cb();
+    }
+  }
 
   // Load contacts
   sheetsAPI('getContacts', {}, function(data) {
@@ -646,8 +705,8 @@ function loadFromSheets(cb) {
         if (!c.fg) c.fg = '#374151';
         return c;
       });
-    }
-    check();
+      check(true);
+    } else { check(false); }
   });
 
   // Load deals
@@ -665,8 +724,8 @@ function loadFromSheets(cb) {
           meta:    d.meta    || ''
         };
       });
-    }
-    check();
+      check(true);
+    } else { check(false); }
   });
 
   // Load calendar events
@@ -684,16 +743,16 @@ function loadFromSheets(cb) {
           notes:   e.notes   || ''
         };
       });
-    }
-    check();
+      check(true);
+    } else { check(false); }
   });
 
   // Load recent activity for dashboard
   sheetsAPI('getActivity', {}, function(data) {
     if (data && data.ok && data.activity && data.activity.length) {
       ALL_ACTIVITY = data.activity;
-    }
-    check();
+      check(true);
+    } else { check(false); }
   });
 }
 
