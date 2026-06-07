@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Cornerstone">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1a4fa0">
+<title>Cornerstone CRM</title>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --blue:#1a4fa0;--blue-light:#eff4ff;--blue-mid:#dbeafe;
+  --green:#16a34a;--green-light:#dcfce7;
+  --amber:#f59e0b;--amber-light:#fef3c7;
+  --red:#dc2626;--red-light:#fee2e2;
+  --purple:#7c3aed;--purple-light:#ede9fe;
+  --gray:#6b7280;--gray-light:#f3f4f6;
+  --border:#e5e7eb;--text:#1a1a2e;
+  --safe-top:env(safe-area-inset-top);
+  --safe-bottom:env(safe-area-inset-bottom);
+}
+html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--text);font-size:15px}
+
+/* ── APP SHELL ── */
+#app{display:flex;flex-direction:column;height:100%;height:100dvh}
+#status-bar{height:var(--safe-top);background:var(--blue);flex-shrink:0}
+
+/* ── HEADER ── */
+.header{background:var(--blue);color:#fff;padding:12px 16px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.header-title{font-size:18px;font-weight:700;letter-spacing:-.3px}
+.header-sub{font-size:12px;opacity:.7;margin-top:1px}
+.header-btn{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.15);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.header-btn i{font-size:20px}
+
+/* ── SCREENS ── */
+#screens{flex:1;overflow:hidden;position:relative}
+.screen{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 14px calc(14px + var(--safe-bottom));display:none;flex-direction:column;gap:12px}
+.screen.active{display:flex}
+
+/* ── BOTTOM NAV ── */
+.bottom-nav{display:flex;background:#fff;border-top:1px solid var(--border);flex-shrink:0;padding-bottom:var(--safe-bottom)}
+.tab-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px;border:none;background:none;cursor:pointer;font-size:10px;font-weight:600;color:#9ca3af;font-family:inherit;position:relative}
+.tab-btn{font-size:20px;line-height:1}
+.tab-btn.active{color:var(--blue)}
+.tab-btn .badge{position:absolute;top:4px;right:calc(50% - 16px);background:var(--red);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:10px;min-width:16px;text-align:center}
+
+/* ── CARDS ── */
+.card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card-header{padding:13px 16px;border-bottom:1px solid #f3f4f6;display:flex;align-items:center;justify-content:space-between}
+.card-title{font-size:14px;font-weight:600;display:flex;align-items:center;gap:7px}
+.card-body{padding:14px 16px}
+
+/* ── METRICS ── */
+.metrics-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.metric{background:#fff;border-radius:14px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.metric-label{font-size:11px;color:var(--gray);font-weight:500;margin-bottom:4px}
+.metric-value{font-size:26px;font-weight:700;line-height:1;color:var(--text)}
+.metric-sub{font-size:11px;color:var(--gray);margin-top:4px}
+.metric-sub.up{color:var(--green)}
+
+/* ── LIST ITEMS ── */
+.list-item{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid #f9fafb;cursor:pointer;active:background:#f9fafb}
+.list-item:last-child{border-bottom:none}
+.list-item:active{background:#f9fafb}
+.avatar{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0}
+.avatar-sm{width:34px;height:34px;font-size:12px}
+.item-main{flex:1;min-width:0}
+.item-name{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item-sub{font-size:12px;color:var(--gray);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item-right{text-align:right;flex-shrink:0}
+.item-right-label{font-size:12px;color:var(--gray)}
+
+/* ── TAGS ── */
+.tag{display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px}
+.tag-blue{background:var(--blue-mid);color:#1d4ed8}
+.tag-green{background:var(--green-light);color:#15803d}
+.tag-amber{background:var(--amber-light);color:#b45309}
+.tag-red{background:var(--red-light);color:#b91c1c}
+.tag-purple{background:var(--purple-light);color:#6d28d9}
+.tag-gray{background:var(--gray-light);color:var(--gray)}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;border-radius:10px;border:1.5px solid var(--border);background:#fff;color:var(--text);font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;transition:all .15s}
+.btn:active{opacity:.8}
+.btn-primary{background:var(--blue);color:#fff;border-color:var(--blue)}
+.btn-green{background:var(--green);color:#fff;border-color:var(--green)}
+.btn-red{background:var(--red);color:#fff;border-color:var(--red)}
+.btn-block{width:100%;justify-content:center}
+.btn-lg{padding:14px 20px;font-size:16px;border-radius:12px}
+
+/* ── ACTION BUTTONS ROW ── */
+.action-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.action-btn{display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 8px;background:#fff;border-radius:12px;border:1.5px solid var(--border);cursor:pointer;font-size:11px;font-weight:600;color:var(--gray)}
+.action-btn:active{background:var(--gray-light)}
+.action-btn i{font-size:22px}
+.action-btn.call{color:var(--green);border-color:var(--green-light);background:var(--green-light)}
+.action-btn.email{color:#1d4ed8;border-color:var(--blue-mid);background:var(--blue-mid)}
+.action-btn.log{color:var(--purple);border-color:var(--purple-light);background:var(--purple-light)}
+.action-btn.schedule{color:var(--amber);border-color:var(--amber-light);background:var(--amber-light)}
+.action-btn.deal{color:var(--blue);border-color:var(--blue-mid);background:var(--blue-mid)}
+
+/* ── SEARCH BAR ── */
+.search-bar{display:flex;align-items:center;gap:8px;background:#fff;border-radius:12px;padding:10px 14px;border:1.5px solid var(--border)}
+.search-bar i{color:var(--gray);font-size:18px;flex-shrink:0}
+.search-bar input{flex:1;border:none;outline:none;font-size:15px;font-family:inherit;color:var(--text);background:transparent}
+.search-bar input::placeholder{color:#9ca3af}
+
+/* ── PIPELINE ── */
+.stage-section{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:0}
+.stage-header-row{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--gray-light)}
+.stage-name{font-size:13px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.05em}
+.stage-total{font-size:13px;font-weight:600;color:var(--text)}
+.deal-row{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid #f9fafb;cursor:pointer}
+.deal-row:last-child{border-bottom:none}
+.deal-row:active{background:#f9fafb}
+.deal-indicator{width:4px;height:40px;border-radius:2px;flex-shrink:0}
+.deal-info{flex:1;min-width:0}
+.deal-name{font-size:15px;font-weight:600}
+.deal-meta{font-size:12px;color:var(--gray);margin-top:2px}
+.deal-value{font-size:15px;font-weight:700;color:var(--blue);flex-shrink:0}
+
+/* ── CALENDAR ── */
+.cal-week{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:12px}
+.cal-day-btn{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border-radius:10px;border:none;background:none;cursor:pointer;font-family:inherit}
+.cal-day-name{font-size:10px;font-weight:600;color:var(--gray);text-transform:uppercase}
+.cal-day-num{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:var(--text)}
+.cal-day-btn.today .cal-day-num{background:var(--blue);color:#fff}
+.cal-day-btn.selected .cal-day-num{background:var(--blue-light);color:var(--blue)}
+.cal-day-dot{width:5px;height:5px;border-radius:50%;background:var(--blue);margin-top:1px}
+.cal-event{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:10px;margin-bottom:8px;cursor:pointer}
+.cal-event:active{opacity:.8}
+.cal-event-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.cal-event-title{font-size:14px;font-weight:600}
+.cal-event-time{font-size:12px;color:var(--gray);margin-top:2px}
+
+/* ── ACTIVITY LOG ── */
+.log-item{display:flex;gap:12px;padding:13px 16px;border-bottom:1px solid #f9fafb}
+.log-item:last-child{border-bottom:none}
+.log-icon{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.log-icon i{font-size:16px}
+.log-body{flex:1;min-width:0}
+.log-summary{font-size:14px;color:var(--text);line-height:1.4}
+.log-meta{font-size:11px;color:var(--gray);margin-top:3px}
+
+/* ── MODAL / SHEET ── */
+.sheet-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:flex-end;opacity:0;pointer-events:none;transition:opacity .2s}
+.sheet-overlay.open{opacity:1;pointer-events:all}
+.sheet{background:#fff;border-radius:20px 20px 0 0;width:100%;max-height:92dvh;overflow-y:auto;padding-bottom:var(--safe-bottom);transform:translateY(100%);transition:transform .25s cubic-bezier(.32,0,.67,0)}
+.sheet-overlay.open .sheet{transform:translateY(0)}
+.sheet-handle{width:36px;height:4px;border-radius:2px;background:#d1d5db;margin:10px auto 4px}
+.sheet-header{padding:4px 20px 16px;display:flex;align-items:center;justify-content:space-between}
+.sheet-title{font-size:18px;font-weight:700}
+.sheet-close{width:32px;height:32px;border-radius:50%;background:var(--gray-light);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--gray)}
+.sheet-close i{font-size:18px}
+.sheet-body{padding:0 20px 20px}
+
+/* ── FORMS ── */
+.form-group{margin-bottom:16px}
+.form-label{font-size:13px;font-weight:600;color:var(--gray);display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em}
+.form-input{width:100%;padding:13px 14px;border:1.5px solid var(--border);border-radius:12px;font-size:16px;font-family:inherit;color:var(--text);background:#fff;outline:none}
+.form-input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(26,79,160,.1)}
+.form-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6,9 12,15 18,9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+.form-textarea{min-height:100px;resize:none;line-height:1.5}
+
+/* ── LOG QUICK SHEET ── */
+.log-type-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
+.log-type-btn{display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 6px;border-radius:12px;border:2px solid var(--border);background:#fff;cursor:pointer;font-size:12px;font-weight:600;color:var(--gray);font-family:inherit}
+.log-type-btn i{font-size:24px}
+.log-type-btn.selected{border-color:var(--blue);background:var(--blue-light);color:var(--blue)}
+
+/* ── LOGIN ── */
+#login-screen{position:fixed;inset:0;background:linear-gradient(160deg,#0f2d6b 0%,#1a4fa0 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;padding:20px;padding-top:calc(20px + var(--safe-top))}
+#login-screen.hidden{display:none}
+.login-card{background:#fff;border-radius:24px;padding:32px 28px;width:100%;max-width:380px;box-shadow:0 24px 64px rgba(0,0,0,.3)}
+.login-logo{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.login-logo-icon{width:44px;height:44px;background:var(--blue);border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;font-weight:700}
+.login-logo-text{font-size:20px;font-weight:700}
+.login-tagline{font-size:14px;color:var(--gray);margin-bottom:28px}
+.login-error{font-size:13px;color:var(--red);min-height:18px;margin-top:8px;text-align:center}
+.login-hint{font-size:12px;color:#9ca3af;text-align:center;margin-top:10px}
+
+/* ── FAB ── */
+.fab{position:fixed;right:20px;bottom:calc(70px + var(--safe-bottom) + 12px);width:56px;height:56px;border-radius:50%;background:var(--blue);color:#fff;border:none;cursor:pointer;box-shadow:0 4px 16px rgba(26,79,160,.45);display:flex;align-items:center;justify-content:center;z-index:100}
+.fab i{font-size:26px}
+.fab:active{transform:scale(.94)}
+
+/* ── EMPTY STATE ── */
+.empty{text-align:center;padding:40px 20px;color:#9ca3af}
+.empty i{font-size:48px;display:block;margin-bottom:12px;opacity:.4}
+.empty p{font-size:14px}
+
+/* ── SECTION LABEL ── */
+.section-label{font-size:12px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.08em;padding:4px 0 8px}
+
+/* ── TOAST ── */
+#toast{position:fixed;bottom:calc(80px + var(--safe-bottom));left:50%;transform:translateX(-50%) translateY(20px);background:#1a1a2e;color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;font-weight:500;z-index:9998;opacity:0;transition:all .25s;pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ── CONTACT DETAIL ── */
+.contact-hero{display:flex;flex-direction:column;align-items:center;padding:24px 20px 16px;background:#fff;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.contact-hero .avatar{width:72px;height:72px;font-size:22px;margin-bottom:10px}
+.contact-hero-name{font-size:20px;font-weight:700}
+.contact-hero-sub{font-size:13px;color:var(--gray);margin-top:3px}
+.info-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f3f4f6}
+.info-row:last-child{border-bottom:none}
+.info-label{font-size:13px;color:var(--gray)}
+.info-value{font-size:14px;font-weight:500;color:var(--text)}
+
+::-webkit-scrollbar{display:none}
+</style>
+</head>
+<body>
+
+<div id="status-bar"></div>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-icon">CB</div>
+      <div class="login-logo-text">Cornerstone</div>
+    </div>
+    <div class="login-tagline">Sign in to your account</div>
+    <div class="form-group">
+      <label class="form-label">Username</label>
+      <input class="form-input" type="text" id="login-user" placeholder="username" autocomplete="username">
+    </div>
+    <div class="form-group" style="margin-bottom:8px">
+      <label class="form-label">Password</label>
+      <input class="form-input" type="password" id="login-pass" placeholder="password" autocomplete="current-password">
+    </div>
+    <button class="btn btn-primary btn-block btn-lg" id="login-btn" onclick="doLogin()">Sign In</button>
+    <div class="login-error" id="login-error"></div>
+    <div class="login-hint" id="login-hint"></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" style="display:none">
+
+  <!-- HEADER (dynamic per screen) -->
+  <div class="header" id="main-header">
+    <div>
+      <div class="header-title" id="header-title">Dashboard</div>
+      <div class="header-sub" id="header-sub">Good morning</div>
+    </div>
+    <button class="header-btn" id="header-action-btn" onclick="openLogSheet(null,null)"><span style="font-size:26px;font-weight:200">+</span></button>
+  </div>
+
+  <!-- SCREENS -->
+  <div id="screens">
+
+    <!-- ── DASHBOARD ── -->
+    <div class="screen active" id="screen-dashboard">
+      <div class="metrics-grid">
+        <div class="metric">
+          <div class="metric-label">Pipeline</div>
+          <div class="metric-value" id="db-pipeline">$847K</div>
+          <div class="metric-sub up">↑ $62K this week</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">June Forecast</div>
+          <div class="metric-value" id="db-forecast">$124K</div>
+          <div class="metric-sub">vs $200K quota</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Total RMR</div>
+          <div class="metric-value" id="db-rmr">$28.4K</div>
+          <div class="metric-sub up">↑ $1.2K MTD</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Open Deals</div>
+          <div class="metric-value" id="db-deals">12</div>
+          <div class="metric-sub">in pipeline</div>
+        </div>
+      </div>
+
+      <!-- Follow-ups today -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><span style="font-style:normal;color:var(--amber)">⏰</span> Follow-Ups Today</span>
+          <span class="tag tag-amber" id="followup-count">6 due</span>
+        </div>
+        <div id="followup-list">
+          <div class="list-item" onclick="openContactDetail('Mike Torres')">
+            <div class="avatar avatar-sm" style="background:#dbeafe;color:#1d4ed8">MT</div>
+            <div class="item-main">
+              <div class="item-name">Mike Torres</div>
+              <div class="item-sub">Call re: Proposal · Advanced Security Co.</div>
+            </div>
+            <span class="tag tag-red">14d</span>
+          </div>
+          <div class="list-item" onclick="openContactDetail('Sarah Lin')">
+            <div class="avatar avatar-sm" style="background:#dcfce7;color:#15803d">SL</div>
+            <div class="item-main">
+              <div class="item-name">Sarah Lin</div>
+              <div class="item-sub">Follow-up · Apex Alarm</div>
+            </div>
+            <span class="tag tag-amber">2d</span>
+          </div>
+          <div class="list-item" onclick="openContactDetail('Dana Hoffmann')">
+            <div class="avatar avatar-sm" style="background:#ede9fe;color:#6d28d9">DH</div>
+            <div class="item-main">
+              <div class="item-name">Dana Hoffmann</div>
+              <div class="item-sub">Send agreement · ProGuard Systems</div>
+            </div>
+            <span class="tag tag-green">Today</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Who replied -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><span style="font-style:normal;color:var(--blue)">📥</span> Who Replied?</span>
+          <span class="tag tag-blue">4 new</span>
+        </div>
+        <div>
+          <div class="list-item" onclick="openContactDetail('Mike Torres')">
+            <div class="avatar avatar-sm" style="background:#dbeafe;color:#1d4ed8">MT</div>
+            <div class="item-main">
+              <div class="item-name">Mike Torres <span class="tag tag-blue" style="font-size:10px;margin-left:4px">replied</span></div>
+              <div class="item-sub">"Let's schedule time to discuss the migration…"</div>
+            </div>
+            <div class="item-right"><div class="item-right-label">12m</div></div>
+          </div>
+          <div class="list-item" onclick="openContactDetail('Sarah Lin')">
+            <div class="avatar avatar-sm" style="background:#dcfce7;color:#15803d">SL</div>
+            <div class="item-main">
+              <div class="item-name">Sarah Lin <span class="tag tag-green" style="font-size:10px;margin-left:4px">opened ×3</span></div>
+              <div class="item-sub">Q3 pricing deck opened 3× today</div>
+            </div>
+            <div class="item-right"><div class="item-right-label">34m</div></div>
+          </div>
+          <div class="list-item" onclick="openContactDetail('Dana Hoffmann')">
+            <div class="avatar avatar-sm" style="background:#ede9fe;color:#6d28d9">DH</div>
+            <div class="item-main">
+              <div class="item-name">Dana Hoffmann <span class="tag tag-purple" style="font-size:10px;margin-left:4px">replied</span></div>
+              <div class="item-sub">"We're ready to move forward with the demo"</div>
+            </div>
+            <div class="item-right"><div class="item-right-label">2h</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── CONTACTS ── -->
+    <div class="screen" id="screen-contacts">
+      <div class="search-bar">
+        <span style="font-size:16px;opacity:.5">🔍</span>
+        <input type="text" placeholder="Search contacts…" id="contact-search" oninput="filterContacts(this.value)">
+      </div>
+      <div class="card" id="contacts-list-card">
+        <div id="contacts-list"></div>
+      </div>
+    </div>
+
+    <!-- ── CONTACT DETAIL (sub-screen) ── -->
+    <div class="screen" id="screen-contact-detail">
+      <div id="contact-detail-content"></div>
+    </div>
+
+    <!-- ── PIPELINE ── -->
+    <div class="screen" id="screen-pipeline">
+      <div class="metrics-grid" style="grid-template-columns:1fr 1fr">
+        <div class="metric">
+          <div class="metric-label">Total Value</div>
+          <div class="metric-value" id="pipe-total-val">$847K</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Active Deals</div>
+          <div class="metric-value" id="pipe-deal-count">12</div>
+        </div>
+      </div>
+      <div id="pipeline-stages"></div>
+    </div>
+
+    <!-- ── CALENDAR ── -->
+    <div class="screen" id="screen-calendar">
+      <div class="card">
+        <div class="card-body" style="padding:14px 10px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:0 6px">
+            <button class="btn" style="padding:6px 12px" onclick="calPrev()"><span style="font-style:normal;">‹</span></button>
+            <span style="font-size:16px;font-weight:700" id="cal-month-label"></span>
+            <button class="btn" style="padding:6px 12px" onclick="calNext()"><span style="font-style:normal;">›</span></button>
+          </div>
+          <div class="cal-week" id="cal-week-headers"></div>
+          <div id="cal-days-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px"></div>
+        </div>
+      </div>
+      <div class="section-label" id="cal-selected-label">Events this week</div>
+      <div class="card"><div id="cal-events-list"></div></div>
+    </div>
+
+    <!-- ── ACTIVITY LOG ── -->
+    <div class="screen" id="screen-activity">
+      <div class="search-bar">
+        <span style="font-style:normal;">🔍</span>
+        <input type="text" placeholder="Search activity…" id="activity-search" oninput="filterActivity(this.value)">
+      </div>
+      <div class="card"><div id="activity-list"></div></div>
+    </div>
+
+  </div><!-- /screens -->
+
+  <!-- FAB -->
+  <button class="fab" id="fab-btn" onclick="openLogSheet(null,null)" style="font-size:32px;line-height:1;padding:0">+</button>
+
+  <!-- BOTTOM NAV -->
+  <div class="bottom-nav">
+    <button class="tab-btn active" id="tab-dashboard" onclick="switchTab('dashboard')">🏠<br>Home
+    </button>
+    <button class="tab-btn" id="tab-contacts" onclick="switchTab('contacts')">👥<br>Contacts
+    </button>
+    <button class="tab-btn" id="tab-pipeline" onclick="switchTab('pipeline')">📊<br>Pipeline
+    </button>
+    <button class="tab-btn" id="tab-calendar" onclick="switchTab('calendar')">📅<br>Calendar
+    </button>
+    <button class="tab-btn" id="tab-activity" onclick="switchTab('activity')">📋<br>Log
+    </button>
+  </div>
+
+</div><!-- /app -->
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- ── LOG ACTIVITY SHEET ── -->
+<div class="sheet-overlay" id="log-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">Log Activity</div>
+      <button class="sheet-close" onclick="closeSheet('log-sheet')"><span style="font-style:normal;">✕</span></button>
+    </div>
+    <div class="sheet-body">
+      <div class="log-type-grid">
+        <button class="log-type-btn selected" data-type="call" onclick="selectLogType(this)"><span style="font-style:normal;color:var(--green)">📞</span>Call</button>
+        <button class="log-type-btn" data-type="email" onclick="selectLogType(this)"><span style="font-style:normal;color:#1d4ed8">✉</span>Email</button>
+        <button class="log-type-btn" data-type="meeting" onclick="selectLogType(this)"><span style="font-style:normal;color:var(--purple)">👥</span>Meeting</button>
+        <button class="log-type-btn" data-type="voicemail" onclick="selectLogType(this)"><span style="font-style:normal;color:var(--amber)">📬</span>Voicemail</button>
+        <button class="log-type-btn" data-type="note" onclick="selectLogType(this)"><span style="font-style:normal;color:var(--gray)">📝</span>Note</button>
+        <button class="log-type-btn" data-type="demo" onclick="selectLogType(this)"><span style="font-style:normal;color:var(--blue)">🖥</span>Demo</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Contact</label>
+        <input class="form-input" type="text" id="log-contact" placeholder="Contact name" autocomplete="off" oninput="searchLogContact(this.value)">
+        <div id="log-contact-results" style="display:none;border:1.5px solid var(--border);border-radius:12px;margin-top:6px;max-height:160px;overflow-y:auto;background:#fff"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Company</label>
+        <input class="form-input" type="text" id="log-company" placeholder="Account name">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Outcome</label>
+        <select class="form-input form-select" id="log-outcome">
+          <option>Connected — positive</option>
+          <option>Connected — neutral</option>
+          <option>Left voicemail</option>
+          <option>No answer</option>
+          <option>Objection raised</option>
+          <option>Meeting confirmed</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-input form-textarea" id="log-notes" placeholder="What happened? Key takeaways, next steps…"></textarea>
+      </div>
+      <button class="btn btn-primary btn-block btn-lg" onclick="saveLog()">
+        <span style="font-style:normal;">✓</span> Save & Log
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── DEAL DETAIL SHEET ── -->
+<div class="sheet-overlay" id="deal-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title" id="deal-sheet-title">Deal</div>
+      <button class="sheet-close" onclick="closeSheet('deal-sheet')"><span style="font-style:normal;">✕</span></button>
+    </div>
+    <div class="sheet-body" id="deal-sheet-body"></div>
+  </div>
+</div>
+
+<!-- ── BOOK APPOINTMENT SHEET ── -->
+<div class="sheet-overlay" id="book-sheet">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">Book Appointment</div>
+      <button class="sheet-close" onclick="closeSheet('book-sheet')"><span style="font-style:normal;">✕</span></button>
+    </div>
+    <div class="sheet-body">
+      <div class="form-group">
+        <label class="form-label">Title</label>
+        <input class="form-input" type="text" id="book-title" placeholder="e.g. Call with Mike Torres">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Type</label>
+        <select class="form-input form-select" id="book-type">
+          <option value="call">📞 Call</option>
+          <option value="demo">🖥 Demo</option>
+          <option value="meeting">🤝 Meeting</option>
+          <option value="follow">📋 Follow-up</option>
+          <option value="deadline">⚠️ Deadline</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Contact</label>
+        <input class="form-input" type="text" id="book-contact" placeholder="Contact name">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Date</label>
+        <input class="form-input" type="date" id="book-date">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group">
+          <label class="form-label">Start Time</label>
+          <input class="form-input" type="time" id="book-start">
+        </div>
+        <div class="form-group">
+          <label class="form-label">End Time</label>
+          <input class="form-input" type="time" id="book-end">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-input form-textarea" id="book-notes" placeholder="Agenda, prep notes…" style="min-height:70px"></textarea>
+      </div>
+      <button class="btn btn-primary btn-block btn-lg" onclick="saveBooking()">
+        <span style="font-style:normal;">📅</span> Save Appointment
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// CORNERSTONE iPhone CRM
+// Paste your Google Sheets Web App URL below
+// ═══════════════════════════════════════════════════════════════════
+var SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyPGAmcKlRhcYWZGtMh2M2zSsQW2mLsXUGMQ6q3NW4nhWubxElcE7wl4mG_e-2mjhhh/exec';
+
+var CURRENT_SESSION = null;
+var _jsonpCounter = 0;
+var _offlineActivity = [];
+
+// ── LOCAL USERS (fallback when Sheets not connected) ────────────────
+var LOCAL_USERS = [
+  {username:'admin',   password:'changeme123', fullName:'Admin User',     role:'Admin',     initials:'AU'},
+  {username:'randy',   password:'password123', fullName:'Randy Stockton', role:'Sales Rep', initials:'RS'},
+  {username:'jake',    password:'password123', fullName:'Jake Donovan',   role:'Sales Rep', initials:'JD'},
+  {username:'maria',   password:'password123', fullName:'Maria Santos',   role:'Sales Rep', initials:'MS'},
+  {username:'manager', password:'password123', fullName:'Sales Manager',  role:'Manager',   initials:'SM'},
+];
+
+// ── API ─────────────────────────────────────────────────────────────
+function sheetsAPI(action, data, cb) {
+  if (!SHEETS_URL || SHEETS_URL === 'PASTE_YOUR_WEB_APP_URL_HERE') {
+    handleOffline(action, data, cb); return;
+  }
+  var body = Object.assign({action:action}, data);
+  if (CURRENT_SESSION) body.callerUsername = CURRENT_SESSION.username;
+  var cbName = '_cb' + (++_jsonpCounter);
+  var params = '?callback=' + cbName + '&payload=' + encodeURIComponent(JSON.stringify(body));
+  window[cbName] = function(d) {
+    delete window[cbName];
+    var s = document.getElementById(cbName); if(s) s.remove();
+    if (cb) cb(d);
+  };
+  var s = document.createElement('script');
+  s.id = cbName; s.src = SHEETS_URL + params;
+  s.onerror = function() {
+    delete window[cbName]; s.remove();
+    handleOffline(action, data, cb);
+  };
+  setTimeout(function(){ if(window[cbName]){ delete window[cbName]; var el=document.getElementById(cbName); if(el)el.remove(); handleOffline(action,data,cb); } }, 10000);
+  document.head.appendChild(s);
+}
+
+function handleOffline(action, data, cb) {
+  if (action === 'login') {
+    var u = LOCAL_USERS.find(function(u){ return u.username.toLowerCase()===(data.username||'').toLowerCase() && u.password===data.password; });
+    cb(u ? {ok:true,user:{username:u.username,fullName:u.fullName,role:u.role,initials:u.initials}} : {ok:false,error:'Invalid username or password.'});
+  } else if (action === 'addActivity') {
+    data.entry.ts = data.entry.ts || Date.now();
+    _offlineActivity.unshift(data.entry);
+    cb({ok:true});
+  } else if (action === 'getActivity') {
+    var log = data.contact ? _offlineActivity.filter(function(e){return e.contact===data.contact;}) : _offlineActivity;
+    cb({ok:true, activity:log});
+  } else {
+    cb({ok:true});
+  }
+}
+
+// ── LOGIN ────────────────────────────────────────────────────────────
+function doLogin() {
+  var username = (document.getElementById('login-user').value||'').trim();
+  var password = document.getElementById('login-pass').value||'';
+  var errEl    = document.getElementById('login-error');
+  var btn      = document.getElementById('login-btn');
+  errEl.textContent = '';
+  if (!username||!password){ errEl.textContent='Enter username and password.'; return; }
+  btn.disabled=true; btn.textContent='Signing in…';
+  sheetsAPI('login',{username:username,password:password},function(data){
+    btn.disabled=false; btn.textContent='Sign In';
+    if (data&&data.ok) { completeLogin(data.user); }
+    else { errEl.textContent=(data&&data.error)||'Login failed.'; document.getElementById('login-pass').value=''; }
+  });
+}
+
+function completeLogin(user) {
+  CURRENT_SESSION = user;
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('app').style.display = 'flex';
+  // Update greeting
+  var h = new Date().getHours();
+  var greet = h<12?'Good morning':h<17?'Good afternoon':'Good evening';
+  document.getElementById('header-sub').textContent = greet + ', ' + user.fullName.split(' ')[0];
+  initApp();
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  var hint = document.getElementById('login-hint');
+  if (hint && (!SHEETS_URL || SHEETS_URL==='PASTE_YOUR_WEB_APP_URL_HERE'))
+    hint.innerHTML = 'Default: <strong>admin</strong> / <strong>changeme123</strong>';
+  document.getElementById('login-pass').addEventListener('keydown',function(e){ if(e.key==='Enter') doLogin(); });
+  document.getElementById('login-user').addEventListener('keydown',function(e){ if(e.key==='Enter') doLogin(); });
+
+  // Set today's date as default for booking
+  var today = new Date().toISOString().split('T')[0];
+  document.getElementById('book-date').value = today;
+});
+
+// ── APP INIT ─────────────────────────────────────────────────────────
+function initApp() {
+  renderContacts();
+  renderPipeline();
+  renderCalendar();
+  renderActivity();
+}
+
+// ── TAB NAVIGATION ───────────────────────────────────────────────────
+var _currentTab = 'dashboard';
+var _prevTab = null;
+
+function switchTab(tab) {
+  // Hide all screens
+  document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
+  document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('active'); });
+
+  // Show selected
+  var screen = document.getElementById('screen-' + tab);
+  if (screen) screen.classList.add('active');
+  var btn = document.getElementById('tab-' + tab);
+  if (btn) btn.classList.add('active');
+
+  // Update header
+  var titles = {dashboard:'Dashboard',contacts:'Contacts',pipeline:'Pipeline',calendar:'Calendar',activity:'Activity Log'};
+  document.getElementById('header-title').textContent = titles[tab] || tab;
+  _currentTab = tab;
+
+  // Show/hide FAB
+  document.getElementById('fab-btn').style.display = ['dashboard','contacts','activity'].includes(tab) ? 'flex' : 'none';
+}
+
+function goBack() {
+  if (_prevTab) switchTab(_prevTab);
+  else switchTab('contacts');
+}
+
+// ── CONTACTS ─────────────────────────────────────────────────────────
+var CONTACTS = [
+  {name:'Mike Torres',   title:'VP Operations',      company:'Advanced Security Co.', initials:'MT', bg:'#dbeafe', fg:'#1d4ed8', phone:'(312) 555-0182', mobile:'(312) 555-9204', email:'mikes@advsecurity.com',    prefer:'Call',  role:'Decision Maker'},
+  {name:'Sarah Lin',     title:'Dir. of Technology', company:'Apex Alarm',            initials:'SL', bg:'#dcfce7', fg:'#15803d', phone:'(415) 555-0341', mobile:'(415) 555-7718', email:'slin@apexalarm.com',        prefer:'Email', role:'Champion'},
+  {name:'Dana Hoffmann', title:'COO',                company:'ProGuard Systems',      initials:'DH', bg:'#ede9fe', fg:'#6d28d9', phone:'(614) 555-0093', mobile:'(614) 555-4421', email:'dhoffmann@proguard.com',    prefer:'Call',  role:'Champion'},
+  {name:'Rick Kowalski', title:'IT Manager',         company:'Guardian Shield',       initials:'RK', bg:'#fef3c7', fg:'#b45309', phone:'(773) 555-0276', mobile:'(773) 555-8833', email:'rick.k@guardianshield.com', prefer:'SMS',   role:'Influencer'},
+  {name:'Bob Wheeler',   title:'President',          company:'Tri-State Alarm',       initials:'BW', bg:'#fee2e2', fg:'#b91c1c', phone:'(718) 555-0519', mobile:'(718) 555-6671', email:'bwheeler@tristatealarm.com',prefer:'Call',  role:'Decision Maker'},
+  {name:'James Petrov',  title:'CEO',                company:'SafeNet Alarm',         initials:'JP', bg:'#dbeafe', fg:'#1d4ed8', phone:'(602) 555-0884', mobile:'(602) 555-3347', email:'jpetrov@safenetalarm.com',  prefer:'Email', role:'Decision Maker'},
+  {name:'Amy Chen',      title:'Owner',              company:'BlueStar Security',     initials:'AC', bg:'#dcfce7', fg:'#15803d', phone:'(206) 555-0762', mobile:'(206) 555-5590', email:'achen@bluestarsecurity.com',prefer:'Call',  role:'Decision Maker'},
+  {name:'Tom Reyes',     title:'Operations Manager', company:'Coast Monitoring',      initials:'TR', bg:'#fef3c7', fg:'#b45309', phone:'(858) 555-0133', mobile:'(858) 555-2284', email:'treyes@coastmonitoring.com',prefer:'Email', role:'Influencer'},
+];
+
+function renderContacts(filter) {
+  var list = document.getElementById('contacts-list');
+  var contacts = filter ? CONTACTS.filter(function(c){
+    var hay = (c.name+c.company+c.title+c.email).toLowerCase();
+    return hay.includes(filter.toLowerCase());
+  }) : CONTACTS;
+
+  if (!contacts.length) {
+    list.innerHTML = '<div class="empty"><span style="font-style:normal;">👥</span><p>No contacts found</p></div>';
+    return;
+  }
+
+  list.innerHTML = contacts.map(function(c) {
+    return '<div class="list-item" onclick="openContactDetail(\'' + c.name.replace(/'/g,"\\'") + '\')">'
+      + '<div class="avatar" style="background:'+c.bg+';color:'+c.fg+'">'+c.initials+'</div>'
+      + '<div class="item-main">'
+        + '<div class="item-name">'+c.name+'</div>'
+        + '<div class="item-sub">'+c.title+' · '+c.company+'</div>'
+      + '</div>'
+      + '<span style="font-style:normal;color:#d1d5db;font-size:18px">›</span>'
+      + '</div>';
+  }).join('');
+}
+
+function filterContacts(val) { renderContacts(val); }
+
+function openContactDetail(name) {
+  var c = CONTACTS.find(function(x){ return x.name===name; }) || {name:name,initials:name[0],bg:'#f3f4f6',fg:'#6b7280',company:'—'};
+  _prevTab = _currentTab;
+
+  // Load recent log
+  sheetsAPI('getActivity',{contact:name},function(data){
+    var log = (data&&data.ok) ? (data.activity||[]) : _offlineActivity.filter(function(e){return e.contact===name;});
+    renderContactDetail(c, log);
+  });
+
+  renderContactDetail(c, []);
+  document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
+  document.getElementById('screen-contact-detail').classList.add('active');
+  document.getElementById('header-title').textContent = c.name;
+}
+
+function renderContactDetail(c, log) {
+  var typeColors = {call:['#dcfce7','#15803d'],email:['#dbeafe','#1d4ed8'],meeting:['#ede9fe','#6d28d9'],voicemail:['#fef3c7','#b45309'],note:['#f3f4f6','#6b7280'],demo:['#dbeafe','#1d4ed8']};
+
+  var logHTML = log.length ? log.slice(0,10).map(function(e){
+    var tc = typeColors[e.type]||typeColors.note;
+    return '<div class="log-item">'
+      + '<div class="log-icon" style="background:'+tc[0]+'"><span>•</span></div>'
+      + '<div class="log-body"><div class="log-summary">'+e.summary+'</div><div class="log-meta">'+e.date+' · '+(e.by||'')+'</div></div>'
+      + '</div>';
+  }).join('') : '<div class="empty" style="padding:20px"><p>No activity logged yet</p></div>';
+
+  document.getElementById('contact-detail-content').innerHTML =
+    '<button class="btn" style="margin-bottom:12px" onclick="goBack()"><span style="font-style:normal;">←</span> Back</button>'
+
+    + '<div class="contact-hero">'
+      + '<div class="avatar" style="background:'+c.bg+';color:'+c.fg+'">'+c.initials+'</div>'
+      + '<div class="contact-hero-name">'+c.name+'</div>'
+      + '<div class="contact-hero-sub">'+(c.title||'')+(c.company?' · '+c.company:'')+'</div>'
+      + '<div style="display:flex;gap:8px;margin-top:14px">'
+        + (c.phone||c.mobile ? '<a href="tel:'+(c.phone||c.mobile||'').replace(/[^0-9+]/g,'')+'" class="btn btn-green" style="flex:1"><span style="font-style:normal;">📞</span> Call</a>' : '')
+        + (c.email ? '<a href="mailto:'+c.email+'" class="btn" style="flex:1;border-color:var(--blue-mid);color:var(--blue);background:var(--blue-light)"><span style="font-style:normal;">✉</span> Email</a>' : '')
+      + '</div>'
+      + '<button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="openLogSheet(\''+c.name.replace(/'/g,"\\'")+'\',\''+((c.company||'').replace(/'/g,"\\'"))+'\')">'
+        + '<span style="font-style:normal;">✏</span> Log Activity'
+      + '</button>'
+    + '</div>'
+
+    + '<div class="card">'
+      + '<div class="card-header"><span class="card-title">Contact Info</span></div>'
+      + '<div class="card-body" style="padding:4px 0">'
+        + infoRow('Phone', c.phone)
+        + infoRow('Mobile', c.mobile)
+        + infoRow('Email', c.email)
+        + infoRow('Prefers', c.prefer)
+        + infoRow('Role', c.role)
+        + infoRow('Company', c.company)
+      + '</div>'
+    + '</div>'
+
+    + '<div class="section-label">Recent Activity</div>'
+    + '<div class="card"><div id="contact-log-list">'+logHTML+'</div></div>';
+}
+
+function infoRow(label, val) {
+  if (!val) return '';
+  return '<div class="info-row" style="padding:12px 16px">'
+    + '<span class="info-label">'+label+'</span>'
+    + '<span class="info-value">'+val+'</span>'
+    + '</div>';
+}
+
+// ── PIPELINE ─────────────────────────────────────────────────────────
+var DEALS = [
+  {id:1,  name:'Falcon Security LLC',   company:'220 accts · AlarmWin',   value:32000, prob:40, stage:'Prospecting', status:'warm'},
+  {id:2,  name:'Delta Guard Services',  company:'480 accts · Micro Key',  value:58000, prob:25, stage:'Prospecting', status:''},
+  {id:3,  name:'Guardian Shield',       company:'420 accts · AlarmWin',   value:47000, prob:40, stage:'Discovery',   status:''},
+  {id:4,  name:'BlueStar Security',     company:'310 accounts',           value:31000, prob:35, stage:'Discovery',   status:''},
+  {id:5,  name:'Apex Alarm',            company:'780 accts · Micro Key',  value:89000, prob:60, stage:'Demo',        status:'hot'},
+  {id:6,  name:'Riverside Alarm',       company:'310 accounts',           value:36000, prob:55, stage:'Demo',        status:''},
+  {id:7,  name:'Advanced Security Co.', company:'1,240 accts · AlarmWin', value:85000, prob:30, stage:'Proposal',    status:'stuck'},
+  {id:8,  name:'Tri-State Alarm',       company:'3,100 accounts',         value:112000,prob:20, stage:'Proposal',    status:'stuck'},
+  {id:9,  name:'SafeNet Alarm',         company:'630 accounts',           value:44000, prob:60, stage:'Proposal',    status:''},
+  {id:10, name:'ProGuard Systems',      company:'2,150 accounts',         value:78000, prob:85, stage:'Closing',     status:'hot'},
+  {id:11, name:'Coast Monitoring',      company:'900 accounts',           value:63000, prob:75, stage:'Closing',     status:'hot'},
+];
+var STAGES = ['Prospecting','Discovery','Demo','Proposal','Closing','Won'];
+
+function renderPipeline() {
+  var active = DEALS.filter(function(d){ return d.stage!=='Won'&&d.stage!=='Lost'; });
+  var total = active.reduce(function(s,d){ return s+d.value; },0);
+  document.getElementById('pipe-total-val').textContent = '$'+(total/1000).toFixed(0)+'K';
+  document.getElementById('pipe-deal-count').textContent = active.length;
+
+  var html = '';
+  STAGES.forEach(function(stage){
+    var deals = DEALS.filter(function(d){ return d.stage===stage; });
+    if (!deals.length) return;
+    var stageTotal = deals.reduce(function(s,d){ return s+d.value; },0);
+    html += '<div class="stage-section" style="margin-bottom:10px">'
+      + '<div class="stage-header-row">'
+        + '<span class="stage-name">'+stage+'</span>'
+        + '<span class="stage-total">$'+(stageTotal/1000).toFixed(0)+'K · '+deals.length+' deal'+(deals.length!==1?'s':'')+'</span>'
+      + '</div>';
+    deals.forEach(function(d){
+      var indColor = d.status==='hot'?'var(--green)':d.status==='stuck'?'var(--red)':d.status==='warm'?'var(--amber)':'var(--border)';
+      html += '<div class="deal-row" onclick="openDealSheet('+d.id+')">'
+        + '<div class="deal-indicator" style="background:'+indColor+'"></div>'
+        + '<div class="deal-info">'
+          + '<div class="deal-name">'+d.name+'</div>'
+          + '<div class="deal-meta">'+d.company+' · '+d.prob+'%</div>'
+        + '</div>'
+        + '<div class="deal-value">$'+(d.value/1000).toFixed(0)+'K</div>'
+      + '</div>';
+    });
+    html += '</div>';
+  });
+  document.getElementById('pipeline-stages').innerHTML = html;
+}
+
+function openDealSheet(id) {
+  var d = DEALS.find(function(x){ return x.id===id; });
+  if (!d) return;
+  document.getElementById('deal-sheet-title').textContent = d.name;
+  var stageOpts = STAGES.map(function(s){ return '<option'+(s===d.stage?' selected':'')+'>'+s+'</option>'; }).join('');
+  document.getElementById('deal-sheet-body').innerHTML =
+    '<div class="card" style="margin-bottom:12px">'
+      + infoRow('Company', d.company)
+      + infoRow('Value', '$'+d.value.toLocaleString())
+      + infoRow('Probability', d.prob+'%')
+      + infoRow('Status', d.status||'Active')
+    + '</div>'
+    + '<div class="form-group">'
+      + '<label class="form-label">Move Stage</label>'
+      + '<select class="form-input form-select" id="deal-stage-sel">'+stageOpts+'</select>'
+    + '</div>'
+    + '<button class="btn btn-primary btn-block" onclick="moveDeal('+d.id+')"><span style="font-style:normal;">⇄</span> Move Deal</button>'
+    + '<button class="btn btn-block" style="margin-top:8px" onclick="openLogSheet(\''+d.name.replace(/'/g,"\\'")+'\',\''+d.company.replace(/'/g,"\\'")+'\')">'
+      + '<span style="font-style:normal;">✏</span> Log Activity for this Deal'
+    + '</button>';
+  openSheet('deal-sheet');
+}
+
+function moveDeal(id) {
+  var d = DEALS.find(function(x){ return x.id===id; });
+  var newStage = document.getElementById('deal-stage-sel').value;
+  if (d) {
+    d.stage = newStage;
+    sheetsAPI('saveDeal',{deal:d},function(){});
+    renderPipeline();
+  }
+  closeSheet('deal-sheet');
+  showToast('Moved to ' + newStage);
+}
+
+// ── CALENDAR ─────────────────────────────────────────────────────────
+var CAL_EVENTS = [
+  {id:1, date:'2026-06-07', title:'Call: Rick Kowalski',     type:'call',     time:'3:00 PM', contact:'Rick Kowalski', company:'Guardian Shield'},
+  {id:2, date:'2026-06-10', title:'Demo: BlueStar Security', type:'demo',     time:'2:00 PM', contact:'Amy Chen',      company:'BlueStar Security'},
+  {id:3, date:'2026-06-12', title:'Close: ProGuard Systems', type:'deadline', time:'EOD',     contact:'Dana Hoffmann', company:'ProGuard Systems'},
+  {id:4, date:'2026-06-15', title:'Follow-up: Apex Alarm',   type:'follow',   time:'10:00 AM',contact:'Sarah Lin',     company:'Apex Alarm'},
+  {id:5, date:'2026-06-18', title:'Sign-off: Coast Monitor', type:'deadline', time:'EOD',     contact:'Tom Reyes',     company:'Coast Monitoring'},
+];
+var calYear = 2026, calMonth = 5;
+var calSelectedDate = null;
+
+function calRender() {
+  var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('cal-month-label').textContent = months[calMonth] + ' ' + calYear;
+
+  // Week day headers
+  var headers = document.getElementById('cal-week-headers');
+  headers.innerHTML = ['Su','Mo','Tu','We','Th','Fr','Sa'].map(function(d){
+    return '<div style="text-align:center;font-size:11px;font-weight:700;color:var(--gray);padding:4px 0">'+d+'</div>';
+  }).join('');
+
+  // Days grid
+  var grid = document.getElementById('cal-days-grid');
+  var first = new Date(calYear, calMonth, 1).getDay();
+  var days  = new Date(calYear, calMonth+1, 0).getDate();
+  var today = new Date();
+  var todayStr = isoDate(today);
+  var html = '';
+
+  // Empty cells
+  for (var i=0; i<first; i++) html += '<div></div>';
+
+  for (var d=1; d<=days; d++) {
+    var ds = calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    var hasEvent = CAL_EVENTS.some(function(e){ return e.date===ds; });
+    var isToday  = ds===todayStr;
+    var isSel    = ds===calSelectedDate;
+    html += '<button class="cal-day-btn'+(isToday?' today':'')+(isSel?' selected':'')+'" onclick="selectCalDay(\''+ds+'\')">'
+      + '<div class="cal-day-num">'+d+'</div>'
+      + (hasEvent ? '<div class="cal-day-dot"></div>' : '')
+      + '</button>';
+  }
+  grid.innerHTML = html;
+
+  // Show events
+  renderCalEvents(calSelectedDate);
+}
+
+function selectCalDay(ds) {
+  calSelectedDate = ds;
+  calRender();
+  renderCalEvents(ds);
+}
+
+function renderCalEvents(ds) {
+  var label   = document.getElementById('cal-selected-label');
+  var list    = document.getElementById('cal-events-list');
+  var events  = ds ? CAL_EVENTS.filter(function(e){ return e.date===ds; }) : CAL_EVENTS.filter(function(e){ return e.date>=isoDate(new Date()); }).slice(0,5);
+
+  if (ds) {
+    var d2 = new Date(ds+'T12:00:00');
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    label.textContent = months[d2.getMonth()]+' '+d2.getDate()+', '+d2.getFullYear();
+  } else {
+    label.textContent = 'Upcoming Events';
+  }
+
+  var typeColors = {call:'var(--green)',demo:'var(--blue)',meeting:'var(--purple)',follow:'var(--amber)',deadline:'var(--red)'};
+
+  if (!events.length) {
+    list.innerHTML = '<div class="empty" style="padding:20px"><span style="font-style:normal;">📅</span><p>No events'+(ds?' this day':'')+' — tap + to book one</p></div>';
+    return;
+  }
+  list.innerHTML = events.map(function(ev){
+    var col = typeColors[ev.type]||'var(--gray)';
+    return '<div class="cal-event" style="background:var(--gray-light)" onclick="openBookSheetForEvent(\''+ev.id+'\')">'
+      + '<div class="cal-event-dot" style="background:'+col+'"></div>'
+      + '<div style="flex:1">'
+        + '<div class="cal-event-title">'+ev.title+'</div>'
+        + '<div class="cal-event-time">'+(ev.time||'')+( ev.contact?' · '+ev.contact:'')+'</div>'
+      + '</div>'
+      + '<span style="font-style:normal;color:#d1d5db;font-size:16px">›</span>'
+    + '</div>';
+  }).join('');
+}
+
+function calPrev() { calMonth--; if(calMonth<0){calMonth=11;calYear--;} calRender(); }
+function calNext() { calMonth++; if(calMonth>11){calMonth=0;calYear++;} calRender(); }
+function isoDate(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+// ── ACTIVITY LOG ─────────────────────────────────────────────────────
+var ALL_ACTIVITY = [];
+
+function renderActivity(filter) {
+  sheetsAPI('getActivity',{},function(data){
+    if (data&&data.ok&&data.activity) ALL_ACTIVITY = data.activity;
+    var log = ALL_ACTIVITY.length ? ALL_ACTIVITY : _offlineActivity;
+    if (filter) log = log.filter(function(e){ return ((e.contact||'')+(e.company||'')+(e.summary||'')).toLowerCase().includes(filter.toLowerCase()); });
+    displayActivity(log.slice(0,50));
+  });
+}
+
+function displayActivity(log) {
+  var list = document.getElementById('activity-list');
+  var typeColors = {call:['#dcfce7','#15803d','ti-phone'],email:['#dbeafe','#1d4ed8','ti-mail'],meeting:['#ede9fe','#6d28d9','ti-users'],voicemail:['#fef3c7','#b45309','ti-voicemail'],note:['#f3f4f6','#6b7280','ti-note'],demo:['#dbeafe','#1d4ed8','ti-presentation']};
+
+  if (!log.length) {
+    list.innerHTML = '<div class="empty"><span style="font-style:normal;">📋</span><p>No activity logged yet</p></div>';
+    return;
+  }
+  list.innerHTML = log.map(function(e){
+    var tc = typeColors[e.type]||typeColors.note;
+    return '<div class="log-item">'
+      + '<div class="log-icon" style="background:'+tc[0]+'"><i class="ti '+tc[2]+'" style="color:'+tc[1]+'"></i></div>'
+      + '<div class="log-body">'
+        + '<div class="log-summary">'+(e.contact?'<strong>'+e.contact+'</strong> · ':'')+e.summary+'</div>'
+        + '<div class="log-meta">'+e.date+(e.company?' · '+e.company:'')+(e.by?' · '+e.by:'')+'</div>'
+      + '</div>'
+    + '</div>';
+  }).join('');
+}
+
+function filterActivity(val) { renderActivity(val); }
+
+// ── LOG SHEET ────────────────────────────────────────────────────────
+var _logType = 'call';
+
+function openLogSheet(contact, company) {
+  if (contact) document.getElementById('log-contact').value = contact;
+  else document.getElementById('log-contact').value = '';
+  if (company) document.getElementById('log-company').value = company;
+  else document.getElementById('log-company').value = '';
+  document.getElementById('log-notes').value = '';
+  // Reset type to call
+  selectLogType(document.querySelector('.log-type-btn[data-type="call"]'));
+  openSheet('log-sheet');
+}
+
+function selectLogType(btn) {
+  document.querySelectorAll('.log-type-btn').forEach(function(b){ b.classList.remove('selected'); });
+  btn.classList.add('selected');
+  _logType = btn.dataset.type;
+}
+
+function searchLogContact(val) {
+  var res = document.getElementById('log-contact-results');
+  if (!val.trim()) { res.style.display='none'; return; }
+  var matches = CONTACTS.filter(function(c){ return (c.name+c.company).toLowerCase().includes(val.toLowerCase()); }).slice(0,5);
+  if (!matches.length) { res.style.display='none'; return; }
+  res.style.display='block';
+  res.innerHTML = matches.map(function(c){
+    return '<div style="padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;gap:10px;align-items:center" onclick="pickLogContact(\''+c.name.replace(/'/g,"\\'")+'\',\''+c.company.replace(/'/g,"\\'")+'\',\''+c.phone+'\')">'+
+      '<div class="avatar avatar-sm" style="background:'+c.bg+';color:'+c.fg+'">'+c.initials+'</div>'+
+      '<div><div style="font-size:14px;font-weight:600">'+c.name+'</div><div style="font-size:12px;color:var(--gray)">'+c.company+'</div></div>'+
+    '</div>';
+  }).join('');
+}
+
+function pickLogContact(name, company, phone) {
+  document.getElementById('log-contact').value = name;
+  document.getElementById('log-company').value = company;
+  document.getElementById('log-contact-results').style.display = 'none';
+}
+
+function saveLog() {
+  var contact = document.getElementById('log-contact').value.trim();
+  var company = document.getElementById('log-company').value.trim();
+  var notes   = document.getElementById('log-notes').value.trim();
+  var outcome = document.getElementById('log-outcome').value;
+  if (!notes) { showToast('Please add notes'); return; }
+  var now = new Date();
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var dateStr = months[now.getMonth()]+' '+now.getDate()+', '+now.getFullYear();
+  var entry = {
+    contact: contact, company: company,
+    type: _logType, date: dateStr, ts: Date.now(),
+    summary: (outcome?'['+outcome+'] ':'')+notes,
+    by: CURRENT_SESSION ? CURRENT_SESSION.fullName : 'User'
+  };
+  sheetsAPI('addActivity',{entry:entry},function(){
+    _offlineActivity.unshift(entry);
+    ALL_ACTIVITY.unshift(entry);
+    if (_currentTab==='activity') displayActivity(ALL_ACTIVITY.slice(0,50));
+  });
+  closeSheet('log-sheet');
+  showToast('Activity logged ✓');
+}
+
+// ── BOOKING ──────────────────────────────────────────────────────────
+function openBookSheet(contact, company) {
+  if (contact) document.getElementById('book-contact').value = contact;
+  if (company) {};
+  var today = new Date().toISOString().split('T')[0];
+  document.getElementById('book-date').value = today;
+  openSheet('book-sheet');
+}
+
+function openBookSheetForEvent(id) { openSheet('book-sheet'); }
+
+function saveBooking() {
+  var title   = document.getElementById('book-title').value.trim();
+  var date    = document.getElementById('book-date').value;
+  var contact = document.getElementById('book-contact').value.trim();
+  var type    = document.getElementById('book-type').value;
+  var start   = document.getElementById('book-start').value;
+  var notes   = document.getElementById('book-notes').value.trim();
+  if (!title||!date) { showToast('Please add a title and date'); return; }
+
+  var newEv = {
+    id: Date.now(), date: date, title: title, type: type,
+    time: start ? fmt12(start) : '',
+    contact: contact, notes: notes
+  };
+  CAL_EVENTS.push(newEv);
+  sheetsAPI('saveCalEvent',{event:newEv},function(){});
+  if (_currentTab==='calendar') calRender();
+  closeSheet('book-sheet');
+  showToast('Appointment saved ✓');
+}
+
+function fmt12(t) {
+  if (!t) return '';
+  var p=t.split(':'),h=parseInt(p[0]),m=p[1];
+  return (h===0?12:h>12?h-12:h)+':'+m+' '+(h<12?'AM':'PM');
+}
+
+// ── SHEETS / OVERLAYS ────────────────────────────────────────────────
+function openSheet(id) {
+  document.getElementById(id).classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeSheet(id) {
+  document.getElementById(id).classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+// Close sheets on backdrop tap
+document.querySelectorAll('.sheet-overlay').forEach(function(ov){
+  ov.addEventListener('click', function(e){ if(e.target===ov) closeSheet(ov.id); });
+});
+
+// ── TOAST ────────────────────────────────────────────────────────────
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function(){ t.classList.remove('show'); }, 2200);
+}
+
+// ── CALENDAR HEADER ACTION ───────────────────────────────────────────
+document.getElementById('header-action-btn').addEventListener('click', function(){
+  if (_currentTab==='calendar') { openSheet('book-sheet'); return; }
+  if (_currentTab==='pipeline') return;
+  openLogSheet(null,null);
+});
+
+// Init calendar
+calRender();
+</script>
+</body>
+</html>
