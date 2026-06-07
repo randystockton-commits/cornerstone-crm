@@ -2975,6 +2975,239 @@ function saveNewCompany() {
   document.getElementById('co-linked-contacts').innerHTML = '';
 }
 
+
+
+// ── RANDY BUILD 6 FIX - Accounts sorting/filtering actually wired up ──
+var _accountSort = 'nextAsc';
+var _accountFilters = {overdue:true,today:true,future:true,none:true};
+var _lastAccountSearch = '';
+
+function build6DateOnly(d) {
+  if (!d) return null;
+  if (d instanceof Date && !isNaN(d)) return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  var raw = String(d).trim();
+  if (!raw) return null;
+  var months = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11,
+                January:0,February:1,March:2,April:3,June:5,July:6,August:7,September:8,October:9,November:10,December:11};
+  var clean = raw.replace(',', '').trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(clean)) {
+    var y = Number(clean.substr(0,4)), m = Number(clean.substr(5,2))-1, da = Number(clean.substr(8,2));
+    return new Date(y,m,da);
+  }
+  var parts = clean.split(/\s+/);
+  if (parts.length >= 2 && months[parts[0]] !== undefined) {
+    var yr = parts.length >= 3 ? Number(parts[2]) : new Date().getFullYear();
+    return new Date(yr, months[parts[0]], Number(parts[1]));
+  }
+  var parsed = new Date(raw);
+  if (!isNaN(parsed)) return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  return null;
+}
+
+function build6DateKey(d) {
+  var dt = build6DateOnly(d);
+  return dt ? dt.getTime() : null;
+}
+
+function build6DaysBetween(a,b) {
+  var one = 24*60*60*1000;
+  return Math.round((build6DateOnly(a).getTime() - build6DateOnly(b).getTime()) / one);
+}
+
+function build6PrettyDate(d) {
+  var dt = build6DateOnly(d);
+  if (!dt) return 'None';
+  var today = build6DateOnly(new Date());
+  var diff = build6DaysBetween(dt, today);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Tomorrow';
+  if (diff === -1) return 'Yesterday';
+  var mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return mo[dt.getMonth()] + ' ' + dt.getDate();
+}
+
+function build6Ago(d) {
+  var dt = build6DateOnly(d);
+  if (!dt) return 'No contact';
+  var today = build6DateOnly(new Date());
+  var diff = build6DaysBetween(today, dt);
+  if (diff <= 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  return diff + ' days ago';
+}
+
+function build6CompanyContacts(companyName) {
+  var key = String(companyName||'').toLowerCase().trim();
+  return (CONTACTS||[]).filter(function(c){ return String(c.company||'').toLowerCase().trim() === key; });
+}
+
+function build6ActivityForCompany(companyName) {
+  var key = String(companyName||'').toLowerCase().trim();
+  var contactNames = build6CompanyContacts(companyName).map(function(c){ return String(c.name||'').toLowerCase().trim(); });
+  return (ALL_ACTIVITY||[]).filter(function(a){
+    var co = String(a.company||'').toLowerCase().trim();
+    var ct = String(a.contact||'').toLowerCase().trim();
+    return co === key || contactNames.indexOf(ct) > -1;
+  });
+}
+
+function build6EventsForCompany(companyName) {
+  var key = String(companyName||'').toLowerCase().trim();
+  var contactNames = build6CompanyContacts(companyName).map(function(c){ return String(c.name||'').toLowerCase().trim(); });
+  return (CAL_EVENTS||[]).filter(function(e){
+    var co = String(e.company||'').toLowerCase().trim();
+    var ct = String(e.contact||'').toLowerCase().trim();
+    return co === key || contactNames.indexOf(ct) > -1;
+  }).filter(function(e){ return build6DateKey(e.date) !== null; });
+}
+
+function build6AccountMeta(co) {
+  var activity = build6ActivityForCompany(co.name);
+  var events = build6EventsForCompany(co.name);
+  var todayKey = build6DateKey(new Date());
+
+  var lastKeys = [];
+  activity.forEach(function(a){ var k = build6DateKey(a.date || a.ts); if (k !== null) lastKeys.push(k); });
+  events.forEach(function(e){ var k = build6DateKey(e.date); if (k !== null && k <= todayKey) lastKeys.push(k); });
+  ['lastContact','lastContactDate','lastActivity','lastActivityDate','updatedAt'].forEach(function(field){
+    var k = build6DateKey(co[field]); if (k !== null) lastKeys.push(k);
+  });
+  var lastKey = lastKeys.length ? Math.max.apply(null,lastKeys) : null;
+
+  var eventKeys = [];
+  events.forEach(function(e){ var k = build6DateKey(e.date); if (k !== null) eventKeys.push(k); });
+  ['nextActivity','nextActivityDate','nextContact','nextContactDate','followUp','followUpDate'].forEach(function(field){
+    var k = build6DateKey(co[field]); if (k !== null) eventKeys.push(k);
+  });
+
+  var futureOrToday = eventKeys.filter(function(k){ return k >= todayKey; }).sort(function(a,b){ return a-b; });
+  var past = eventKeys.filter(function(k){ return k < todayKey; }).sort(function(a,b){ return b-a; });
+  var nextKey = futureOrToday.length ? futureOrToday[0] : (past.length ? past[0] : null);
+
+  var status = 'none';
+  if (nextKey !== null) {
+    if (nextKey < todayKey) status = 'overdue';
+    else if (nextKey === todayKey) status = 'today';
+    else status = 'future';
+  }
+  return {lastKey:lastKey,nextKey:nextKey,status:status,contactCount:build6CompanyContacts(co.name).length};
+}
+
+function setAccountSort(value) {
+  _accountSort = value || 'nextAsc';
+  try { localStorage.setItem('cornerstoneAccountSort', _accountSort); } catch(e) {}
+  hapticTap();
+  renderAccounts(_lastAccountSearch);
+}
+
+function toggleAccountFilter(which) {
+  if (!_accountFilters.hasOwnProperty(which)) return;
+  _accountFilters[which] = !_accountFilters[which];
+  try { localStorage.setItem('cornerstoneAccountFilters', JSON.stringify(_accountFilters)); } catch(e) {}
+  updateAccountFilterButtons();
+  hapticTap();
+  renderAccounts(_lastAccountSearch);
+}
+
+function updateAccountFilterButtons() {
+  Object.keys(_accountFilters).forEach(function(k){
+    var el = document.getElementById('toggle-' + k);
+    if (el) el.classList.toggle('active', !!_accountFilters[k]);
+  });
+  var sel = document.getElementById('account-sort-select');
+  if (sel) sel.value = _accountSort || 'nextAsc';
+}
+
+function build6LoadAccountPrefs() {
+  // Default remains Next Activity closest first. Saved preferences are only used after the user changes them.
+  try {
+    var savedSort = localStorage.getItem('cornerstoneAccountSort');
+    if (savedSort) _accountSort = savedSort;
+    var savedFilters = localStorage.getItem('cornerstoneAccountFilters');
+    if (savedFilters) _accountFilters = Object.assign(_accountFilters, JSON.parse(savedFilters));
+  } catch(e) {}
+  updateAccountFilterButtons();
+}
+
+function renderAccounts(filter) {
+  _lastAccountSearch = filter || '';
+  build6LoadAccountPrefs();
+  loadCompanies(function() {
+    var list = document.getElementById('accounts-list');
+    if (!list) return;
+    var q = String(filter||'').toLowerCase().trim();
+    var companies = (COMPANIES||[]).slice();
+    if (q) {
+      companies = companies.filter(function(c){
+        return String((c.name||'') + ' ' + (c.software||'') + ' ' + (c.city||'') + ' ' + (c.state||'')).toLowerCase().indexOf(q) > -1;
+      });
+    }
+
+    var rows = companies.map(function(co){
+      var meta = build6AccountMeta(co);
+      return {co:co, meta:meta};
+    }).filter(function(r){
+      return !!_accountFilters[r.meta.status];
+    });
+
+    rows.sort(function(a,b){
+      var an = String(a.co.name||'');
+      var bn = String(b.co.name||'');
+      var max = 9999999999999;
+      if (_accountSort === 'az') return an.localeCompare(bn);
+      if (_accountSort === 'nextDesc') return (b.meta.nextKey || 0) - (a.meta.nextKey || 0) || an.localeCompare(bn);
+      if (_accountSort === 'lastOldest') return (a.meta.lastKey || max) - (b.meta.lastKey || max) || an.localeCompare(bn);
+      if (_accountSort === 'lastNewest') return (b.meta.lastKey || 0) - (a.meta.lastKey || 0) || an.localeCompare(bn);
+      // Default: Next Activity closest first, with no activity at bottom.
+      return (a.meta.nextKey || max) - (b.meta.nextKey || max) || an.localeCompare(bn);
+    });
+
+    if (!rows.length) {
+      list.innerHTML = '<div class="empty" style="padding:30px"><p>No accounts match this view</p></div>';
+      return;
+    }
+
+    var statusColor = {overdue:'overdue',today:'today',future:'future',none:'none'};
+    var statusLabel = {overdue:'Overdue',today:'Today',future:'Future',none:'No Activity'};
+    list.innerHTML = '';
+    rows.forEach(function(r){
+      var co = r.co, meta = r.meta;
+      var primaryContact = (CONTACTS||[]).find(function(c){
+        return String(c.company||'').toLowerCase().trim() === String(co.name||'').toLowerCase().trim()
+          && (c.isPrimary === 'TRUE' || c.isPrimary === true);
+      });
+      var ini = String(co.name||'?').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().substr(0,2);
+      var row = document.createElement('div');
+      row.className = 'list-item';
+      row.style.cursor = 'pointer';
+      var subTop = [];
+      if (primaryContact && primaryContact.name) subTop.push(primaryContact.name);
+      if (meta.contactCount) subTop.push(meta.contactCount + ' contact' + (meta.contactCount === 1 ? '' : 's'));
+      if (co.accounts) subTop.push(co.accounts + ' accts');
+      row.innerHTML = ''
+        + '<div class="avatar" style="background:#fef3c7;color:#b45309">'+ini+'</div>'
+        + '<div class="item-main">'
+          + '<div class="item-name">'+(co.name||'Unnamed Account')+'</div>'
+          + '<div class="item-sub">'+(subTop.length ? subTop.join(' · ') : (co.software || 'Account'))+'</div>'
+          + '<div class="build6-account-meta">Last Contact: <strong>'+build6Ago(meta.lastKey)+'</strong> · Next Activity: <span class="build6-next '+statusColor[meta.status]+'">'+(meta.nextKey ? build6PrettyDate(meta.nextKey) : 'None')+'</span>'+(meta.status==='none'?' ⚠':'')+'</div>'
+        + '</div>'
+        + '<span style="font-size:18px;color:#d1d5db;flex-shrink:0">›</span>';
+      row.addEventListener('click', function(){ openAccountDetail(co.name); });
+      list.appendChild(row);
+    });
+  });
+}
+
+function filterAccounts(val) { renderAccounts(val); }
+
+// Force default Accounts sort on first load of this fixed build unless user changes it after this version.
+document.addEventListener('DOMContentLoaded', function(){
+  try {
+    if (!localStorage.getItem('cornerstoneAccountSort')) localStorage.setItem('cornerstoneAccountSort','nextAsc');
+  } catch(e) {}
+  updateAccountFilterButtons();
+});
+
 </script>
 
 <!-- ── ADD CONTACT SHEET ── -->
@@ -3232,6 +3465,111 @@ function saveNewCompany() {
     </div>
   </div>
 </div>
+
+
+
+<style>
+/* ── RANDY V7 CLEAN ACCOUNTS - easy to revert ── */
+.build6-account-tools{display:flex;gap:4px;overflow-x:auto;padding:4px 0 6px;scrollbar-width:none;align-items:center}
+.build6-sort{flex-shrink:0;border:1.4px solid var(--border);border-radius:999px;background:#fff;color:var(--text);font-size:11px;font-weight:800;padding:5px 8px;font-family:inherit;min-height:28px;max-height:30px}
+.build6-toggle{flex-shrink:0;border:1.4px solid var(--border);border-radius:999px;background:#fff;color:var(--gray);font-size:10.5px;font-weight:800;padding:5px 8px;font-family:inherit;cursor:pointer;min-height:28px;max-height:30px;line-height:1}
+.build6-toggle.active{background:var(--blue);border-color:var(--blue);color:#fff}
+.build6-account-meta{font-size:11px;color:var(--gray);margin-top:4px;line-height:1.35;white-space:normal}
+.v7-account-sub{font-size:11px;color:var(--gray);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.v7-clean-note{font-size:10px;color:#9ca3af;margin-top:2px}
+@media (max-width:380px){.build6-toggle{font-size:10px;padding:5px 7px}.build6-sort{font-size:10.5px;padding:5px 7px}}
+</style>
+
+<script>
+// ── RANDY V7 CLEAN ACCOUNTS - final override after all app code loads ──
+(function(){
+  function safeText(v){ return String(v == null ? '' : v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function companyContacts(name){
+    return (window.CONTACTS || []).filter(function(c){ return String(c.company||'').toLowerCase().trim() === String(name||'').toLowerCase().trim(); });
+  }
+  function accountMeta(co){
+    if (typeof build6AccountMeta === 'function') return build6AccountMeta(co);
+    return {lastKey:0,nextKey:0,status:'none',contactCount:companyContacts(co.name).length};
+  }
+  function ago(k){ return (typeof build6Ago === 'function') ? build6Ago(k) : (k ? new Date(k).toLocaleDateString() : 'Never'); }
+  function pretty(k){ return (typeof build6PrettyDate === 'function') ? build6PrettyDate(k) : (k ? new Date(k).toLocaleDateString() : 'None'); }
+  function loadCo(cb){
+    if (typeof loadCompanies === 'function') loadCompanies(cb);
+    else cb();
+  }
+
+  window.renderAccounts = function(filter){
+    window._lastAccountSearch = filter || '';
+    if (typeof build6LoadAccountPrefs === 'function') build6LoadAccountPrefs();
+    loadCo(function(){
+      var list = document.getElementById('accounts-list');
+      if (!list) return;
+      var q = String(filter||'').toLowerCase().trim();
+      var companies = (window.COMPANIES || []).slice();
+      if (q) {
+        companies = companies.filter(function(c){
+          return String((c.name||'') + ' ' + (c.software||'') + ' ' + (c.city||'') + ' ' + (c.state||'')).toLowerCase().indexOf(q) > -1;
+        });
+      }
+      var filters = window._accountFilters || {overdue:true,today:true,future:true,none:true};
+      var sort = window._accountSort || 'nextAsc';
+      var rows = companies.map(function(co){ return {co:co, meta:accountMeta(co)}; })
+        .filter(function(r){ return !!filters[r.meta.status]; });
+      rows.sort(function(a,b){
+        var an = String(a.co.name||'');
+        var bn = String(b.co.name||'');
+        var max = 9999999999999;
+        if (sort === 'az') return an.localeCompare(bn);
+        if (sort === 'nextDesc') return (b.meta.nextKey || 0) - (a.meta.nextKey || 0) || an.localeCompare(bn);
+        if (sort === 'lastOldest') return (a.meta.lastKey || max) - (b.meta.lastKey || max) || an.localeCompare(bn);
+        if (sort === 'lastNewest') return (b.meta.lastKey || 0) - (a.meta.lastKey || 0) || an.localeCompare(bn);
+        return (a.meta.nextKey || max) - (b.meta.nextKey || max) || an.localeCompare(bn);
+      });
+      if (!rows.length) {
+        list.innerHTML = '<div class="empty" style="padding:30px"><p>No accounts match this view</p></div>';
+        return;
+      }
+      var statusClass = {overdue:'overdue',today:'today',future:'future',none:'none'};
+      list.innerHTML = '';
+      rows.forEach(function(r){
+        var co = r.co, meta = r.meta;
+        var contacts = companyContacts(co.name);
+        var primaryContact = contacts.find(function(c){ return c.isPrimary === 'TRUE' || c.isPrimary === true; });
+        var ini = String(co.name||'?').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().substr(0,2);
+        var sub = [];
+        if (primaryContact && primaryContact.name) sub.push(primaryContact.name);
+        if (contacts.length) sub.push(contacts.length + ' contact' + (contacts.length === 1 ? '' : 's'));
+        var row = document.createElement('div');
+        row.className = 'list-item';
+        row.style.cursor = 'pointer';
+        row.innerHTML = ''
+          + '<div class="avatar" style="background:#fef3c7;color:#b45309">'+safeText(ini)+'</div>'
+          + '<div class="item-main">'
+            + '<div class="item-name">'+safeText(co.name || 'Unnamed Account')+'</div>'
+            + '<div class="v7-account-sub">'+safeText(sub.length ? sub.join(' · ') : 'Account')+'</div>'
+            + '<div class="build6-account-meta">Last Contact: <strong>'+safeText(ago(meta.lastKey))+'</strong> · Next Activity: <span class="build6-next '+(statusClass[meta.status]||'none')+'">'+safeText(meta.nextKey ? pretty(meta.nextKey) : 'None')+'</span>'+(meta.status==='none'?' ⚠':'')+'</div>'
+          + '</div>'
+          + '<span style="font-size:18px;color:#d1d5db;flex-shrink:0">›</span>';
+        row.addEventListener('click', function(){
+          if (typeof trackRecentlyViewedAccount === 'function') trackRecentlyViewedAccount(co.name);
+          openAccountDetail(co.name);
+        });
+        list.appendChild(row);
+      });
+    });
+  };
+
+  window.filterAccounts = function(val){ window.renderAccounts(val); };
+
+  document.addEventListener('DOMContentLoaded', function(){
+    try { if (!localStorage.getItem('cornerstoneAccountSort')) localStorage.setItem('cornerstoneAccountSort','nextAsc'); } catch(e) {}
+    setTimeout(function(){
+      if (typeof updateAccountFilterButtons === 'function') updateAccountFilterButtons();
+      if (window._currentTab === 'accounts') window.renderAccounts(window._lastAccountSearch || '');
+    }, 250);
+  });
+})();
+</script>
 
 </body>
 </html>
