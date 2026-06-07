@@ -3720,5 +3720,106 @@ document.addEventListener('DOMContentLoaded', function(){
 })();
 </script>
 
+
+
+<style>
+/* ── RANDY V9 COMPACT ACCOUNTS - easy to revert ── */
+.build6-account-tools{gap:3px;padding:3px 0 5px;align-items:center}
+.build6-sort{font-size:10px;font-weight:800;padding:3px 7px;min-height:26px;max-height:28px;border-radius:999px;max-width:150px}
+.build6-toggle{font-size:9.5px;font-weight:800;padding:4px 7px;min-height:24px;max-height:26px;border-radius:999px;line-height:1}
+.v9-account-date-line{font-size:11px;color:var(--gray);margin-top:3px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.v9-date-label{color:#64748b;font-weight:800}
+.v9-last-date{font-weight:800;color:#334155}
+.v9-next-date{font-weight:900}
+.v9-next-date.overdue{color:var(--red)}
+.v9-next-date.today{color:var(--amber)}
+.v9-next-date.future{color:var(--green)}
+.v9-next-date.none{color:#9ca3af}
+.list-item{padding:11px 16px}
+.item-name{font-size:16px;line-height:1.15}
+.v7-account-sub{font-size:10.5px;line-height:1.2;margin-top:2px}
+@media (max-width:380px){
+  .build6-sort{font-size:9.5px;padding:3px 6px;max-width:142px}
+  .build6-toggle{font-size:9px;padding:4px 6px}
+  .build6-account-tools{gap:2px}
+  .v9-account-date-line{font-size:10.5px}
+}
+</style>
+
+<script>
+// ── RANDY V9 COMPACT ACCOUNTS - shorter dates and cleaner filter buttons ──
+(function(){
+  function safeText(v){ return String(v == null ? '' : v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function norm(v){ return String(v||'').toLowerCase().trim(); }
+  function contactsFor(companyName){
+    var key = norm(companyName);
+    return (window.CONTACTS || []).filter(function(c){ return norm(c.company) === key; });
+  }
+  function shortDate(k){
+    if (k == null) return '';
+    var d = new Date(k);
+    var mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return mo[d.getMonth()] + ' ' + d.getDate();
+  }
+  function dayLabel(k, fallback){
+    if (k == null) return fallback || '';
+    var d = new Date(k), t = new Date();
+    var dk = new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();
+    var tk = new Date(t.getFullYear(),t.getMonth(),t.getDate()).getTime();
+    var diff = Math.round((dk - tk) / 86400000);
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Tomorrow';
+    if (diff === -1) return 'Yesterday';
+    return shortDate(k);
+  }
+  function loadCo(cb){ if (typeof loadCompanies === 'function') loadCompanies(cb); else cb(); }
+
+  window.renderAccounts = function(filter){
+    window._lastAccountSearch = filter || '';
+    if (typeof build6LoadAccountPrefs === 'function') build6LoadAccountPrefs();
+    loadCo(function(){
+      var list = document.getElementById('accounts-list'); if(!list) return;
+      var q = norm(filter);
+      var companies = (window.COMPANIES || []).slice();
+      if (q) companies = companies.filter(function(c){ return norm((c.name||'')+' '+(c.software||'')+' '+(c.city||'')+' '+(c.state||'')).indexOf(q)>-1; });
+      var filters = window._accountFilters || {overdue:true,today:true,future:true,none:true};
+      var sort = window._accountSort || 'nextAsc';
+      var metaFn = window.randyV8AccountMeta || function(){ return {lastKey:null,nextKey:null,status:'none'}; };
+      var rows = companies.map(function(co){ return {co:co, meta:metaFn(co)}; }).filter(function(r){ return !!filters[r.meta.status]; });
+      rows.sort(function(a,b){
+        var an=String(a.co.name||''), bn=String(b.co.name||''), max=9999999999999;
+        if (sort==='az') return an.localeCompare(bn);
+        if (sort==='nextDesc') return (b.meta.nextKey||0)-(a.meta.nextKey||0) || an.localeCompare(bn);
+        if (sort==='lastOldest') return (a.meta.lastKey||max)-(b.meta.lastKey||max) || an.localeCompare(bn);
+        if (sort==='lastNewest') return (b.meta.lastKey||0)-(a.meta.lastKey||0) || an.localeCompare(bn);
+        return (a.meta.nextKey||max)-(b.meta.nextKey||max) || an.localeCompare(bn);
+      });
+      if(!rows.length){ list.innerHTML='<div class="empty" style="padding:30px"><p>No accounts match this view</p></div>'; return; }
+      list.innerHTML='';
+      rows.forEach(function(r){
+        var co=r.co, meta=r.meta, contacts=contactsFor(co.name);
+        var primary=contacts.find(function(c){return c.isPrimary==='TRUE'||c.isPrimary===true;}) || contacts[0];
+        var ini=String(co.name||'?').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().substr(0,2);
+        var sub=[]; if(primary&&primary.name) sub.push(primary.name); if(contacts.length) sub.push(contacts.length+' contact'+(contacts.length===1?'':'s'));
+        var lastText = meta.lastKey ? dayLabel(meta.lastKey) : 'Never';
+        var nextText = meta.nextKey ? dayLabel(meta.nextKey) : 'Not Scheduled';
+        var row=document.createElement('div'); row.className='list-item'; row.style.cursor='pointer';
+        row.innerHTML=''
+          + '<div class="avatar" style="background:#fef3c7;color:#b45309">'+safeText(ini)+'</div>'
+          + '<div class="item-main">'
+            + '<div class="item-name">'+safeText(co.name||'Unnamed Account')+'</div>'
+            + '<div class="v7-account-sub">'+safeText(sub.length?sub.join(' · '):'Account')+'</div>'
+            + '<div class="v9-account-date-line"><span class="v9-date-label">Last:</span> <span class="v9-last-date">'+safeText(lastText)+'</span> · <span class="v9-date-label">Next:</span> <span class="v9-next-date '+safeText(meta.status)+'">'+safeText(nextText)+'</span>'+(meta.status==='none'?' ⚠':'')+'</div>'
+          + '</div><span style="font-size:18px;color:#d1d5db;flex-shrink:0">›</span>';
+        row.addEventListener('click',function(){ if(typeof trackRecentlyViewedAccount==='function') trackRecentlyViewedAccount(co.name); openAccountDetail(co.name); });
+        list.appendChild(row);
+      });
+    });
+  };
+  window.filterAccounts = function(val){ window.renderAccounts(val); };
+  setTimeout(function(){ if (window._currentTab === 'accounts') window.renderAccounts(window._lastAccountSearch || ''); }, 250);
+})();
+</script>
+
 </body>
 </html>
