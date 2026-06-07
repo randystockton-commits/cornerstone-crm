@@ -48,7 +48,7 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
 .tab-btn .nav-icon{font-size:19px;line-height:1}
 .tab-btn .nav-label{font-size:9px;line-height:1.05;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .tab-btn.active{color:var(--blue)}
-.tab-btn .badge{position:absolute;top:2px;right:calc(50% - 22px);background:var(--red);color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:10px;min-width:16px;text-align:center;line-height:1.2}
+.tab-btn .badge{position:absolute;top:2px;right:calc(50% - 22px);background:var(--blue);color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:10px;min-width:16px;text-align:center;line-height:1.2}
 
 /* ── CARDS ── */
 .card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)}
@@ -228,6 +228,44 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
 .card-body{padding:12px 14px}
 .metric{padding:12px}
 @media (max-width:380px){.tab-btn .nav-label{font-size:8.5px}.tab-btn .nav-icon{font-size:18px}.bottom-nav{min-height:56px}}
+
+
+/* ── RANDY CALENDAR AVAILABILITY PREVIEW ── */
+.day-availability-card{background:#f8fafc;border:1.5px solid var(--border);border-radius:14px;padding:12px;margin:-2px 0 16px}
+.day-availability-title{font-size:12px;font-weight:800;color:var(--gray);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.day-availability-list{display:flex;flex-direction:column;gap:7px}
+.day-availability-row{display:flex;gap:8px;align-items:flex-start;background:#fff;border:1px solid #eef2f7;border-radius:10px;padding:9px 10px}
+.day-availability-time{font-size:12px;font-weight:800;color:var(--blue);min-width:86px}
+.day-availability-main{font-size:13px;font-weight:700;color:var(--text);line-height:1.25}
+.day-availability-sub{font-size:11px;color:var(--gray);margin-top:2px}
+.day-availability-empty{font-size:13px;color:var(--green);background:#fff;border:1px solid #dcfce7;border-radius:10px;padding:10px}
+.day-conflict-warning{display:none;background:var(--red-light);color:var(--red);border:1px solid #fecaca;border-radius:10px;padding:9px 10px;font-size:12px;font-weight:700;margin-top:8px}
+
+
+/* ── RANDY MINI MONTH PICKER - easy to revert ── */
+.book-mini-calendar{background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:12px;margin-bottom:14px}
+.book-mini-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.book-mini-title{font-size:15px;font-weight:800;color:var(--text)}
+.book-mini-nav{width:34px;height:34px;border-radius:10px;border:1px solid var(--border);background:#fff;font-size:18px;font-weight:800;color:var(--blue);cursor:pointer}
+.book-mini-week{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:5px}
+.book-mini-week div{text-align:center;font-size:10px;font-weight:800;color:var(--gray);padding:2px 0}
+.book-mini-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.book-mini-day{min-height:42px;border:none;border-radius:10px;background:#f8fafc;font-family:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;position:relative;cursor:pointer}
+.book-mini-day:active{opacity:.8}
+.book-mini-day.empty{background:transparent;cursor:default}
+.book-mini-day .num{font-size:13px;font-weight:800;color:var(--text);line-height:1}
+.book-mini-day.today .num{color:var(--blue)}
+.book-mini-day.selected{background:var(--blue);color:#fff}
+.book-mini-day.selected .num{color:#fff}
+.book-mini-dot{width:5px;height:5px;border-radius:50%;background:var(--blue)}
+.book-mini-day.selected .book-mini-dot{background:#fff}
+.book-mini-load{font-size:9px;font-weight:800;color:var(--gray);line-height:1}
+.book-mini-day.busy-1{background:#eff6ff}
+.book-mini-day.busy-3{background:#fef3c7}
+.book-mini-day.busy-6{background:#fee2e2}
+.book-mini-day.selected.busy-1,.book-mini-day.selected.busy-3,.book-mini-day.selected.busy-6{background:var(--blue)}
+.book-selected-date{font-size:12px;font-weight:700;color:var(--gray);margin:8px 0 0;text-align:center}
+
 
 ::-webkit-scrollbar{display:none}
 </style>
@@ -420,7 +458,7 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
     <button class="tab-btn" id="tab-contacts" onclick="switchTab('contacts')"><span class="nav-icon">👥</span><span class="nav-label">Contacts</span></button>
     <button class="tab-btn" id="tab-accounts" onclick="switchTab('accounts')"><span class="nav-icon">🏢</span><span class="nav-label">Accounts</span></button>
     <button class="tab-btn" id="tab-calendar" onclick="switchTab('calendar')"><span class="nav-icon">📅</span><span class="nav-label">Calendar</span><span class="badge" id="calendar-badge" style="display:none">0</span></button>
-    <button class="tab-btn" id="tab-pipeline" onclick="switchTab('pipeline')"><span class="nav-icon">📊</span><span class="nav-label">Pipeline</span><span class="badge" id="pipeline-badge" style="display:none">0</span></button>
+    <button class="tab-btn" id="tab-pipeline" onclick="switchTab('pipeline')"><span class="nav-icon">📊</span><span class="nav-label">Pipeline</span></button>
   </div>
 
 </div><!-- /app -->
@@ -493,7 +531,7 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
   <div class="sheet">
     <div class="sheet-handle"></div>
     <div class="sheet-header">
-      <div class="sheet-title">Book Appointment</div>
+      <div class="sheet-title" id="book-sheet-title">Book Appointment</div>
       <button class="sheet-close" onclick="closeSheet('book-sheet')"><span style="font-style:normal;">✕</span></button>
     </div>
     <div class="sheet-body">
@@ -516,8 +554,20 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
         <input class="form-input" type="text" id="book-contact" placeholder="Contact name">
       </div>
       <div class="form-group">
-        <label class="form-label">Date</label>
-        <input class="form-input" type="date" id="book-date">
+        <label class="form-label">Pick New Date</label>
+        <input type="hidden" id="book-date">
+        <div class="book-mini-calendar" id="book-mini-calendar">
+          <div class="book-mini-header">
+            <button class="book-mini-nav" type="button" onclick="bookMiniPrev()">‹</button>
+            <div class="book-mini-title" id="book-mini-title">Month Year</div>
+            <button class="book-mini-nav" type="button" onclick="bookMiniNext()">›</button>
+          </div>
+          <div class="book-mini-week">
+            <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
+          </div>
+          <div class="book-mini-grid" id="book-mini-grid"></div>
+          <div class="book-selected-date" id="book-selected-date">Pick a day</div>
+        </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div class="form-group">
@@ -529,11 +579,21 @@ html,body{height:100%;overflow:hidden;background:#f4f5f7;font-family:-apple-syst
           <input class="form-input" type="time" id="book-end">
         </div>
       </div>
+
+      <div class="day-availability-card" id="book-day-availability">
+        <div class="day-availability-title">
+          <span>Appointments on selected day</span>
+          <span id="book-day-count">0</span>
+        </div>
+        <div class="day-availability-list" id="book-day-list"></div>
+        <div class="day-conflict-warning" id="book-conflict-warning">⚠ This time overlaps another appointment.</div>
+      </div>
+
       <div class="form-group">
         <label class="form-label">Notes</label>
         <textarea class="form-input form-textarea" id="book-notes" placeholder="Agenda, prep notes…" style="min-height:70px"></textarea>
       </div>
-      <button class="btn btn-primary btn-block btn-lg" onclick="saveBooking()">
+      <button class="btn btn-primary btn-block btn-lg" id="book-save-btn" onclick="saveBooking()">
         <span style="font-style:normal;">📅</span> Save Appointment
       </button>
     </div>
@@ -586,11 +646,9 @@ function todayCount() {
 }
 
 function updateNavBadges() {
-  var activeDeals = DEALS.filter(function(d){ return d.stage !== 'Won' && d.stage !== 'Lost'; }).length;
+  // Calendar badge only. Pipeline active deal badge removed by request.
   var todayEvents = todayCount();
-  var pipeBadge = document.getElementById('pipeline-badge');
   var calBadge  = document.getElementById('calendar-badge');
-  if (pipeBadge) { pipeBadge.textContent = activeDeals; pipeBadge.style.display = activeDeals ? 'block' : 'none'; }
   if (calBadge)  { calBadge.textContent = todayEvents; calBadge.style.display = todayEvents ? 'block' : 'none'; }
 }
 
@@ -691,6 +749,13 @@ document.addEventListener('DOMContentLoaded', function() {
   // Set today's date as default for booking
   var today = new Date().toISOString().split('T')[0];
   document.getElementById('book-date').value = today;
+
+  // Show appointments for the selected date while booking/editing, so you do not double book.
+  ['book-date','book-start','book-end'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('input', updateBookDayAvailability);
+    if (el) el.addEventListener('change', updateBookDayAvailability);
+  });
 });
 
 // ── APP INIT ─────────────────────────────────────────────────────────
@@ -1662,15 +1727,201 @@ function saveLog() {
 }
 
 // ── BOOKING ──────────────────────────────────────────────────────────
+var _editingEventId = null;
+
 function openBookSheet(contact, company) {
-  if (contact) document.getElementById('book-contact').value = contact;
-  if (company) {};
+  _editingEventId = null;
   var today = new Date().toISOString().split('T')[0];
+  document.getElementById('book-title').value = '';
+  document.getElementById('book-type').value = 'call';
+  document.getElementById('book-contact').value = contact || '';
   document.getElementById('book-date').value = today;
+  document.getElementById('book-start').value = '';
+  document.getElementById('book-end').value = '';
+  document.getElementById('book-notes').value = '';
+  setBookSheetMode(false);
+  setBookPickerFromDate(today);
   openSheet('book-sheet');
+  updateBookDayAvailability();
 }
 
-function openBookSheetForEvent(id) { openSheet('book-sheet'); }
+function setBookSheetMode(isEdit) {
+  var titleEl = document.getElementById('book-sheet-title');
+  var saveBtn = document.getElementById('book-save-btn');
+  if (titleEl) titleEl.textContent = isEdit ? 'Edit Appointment' : 'Book Appointment';
+  if (saveBtn) saveBtn.innerHTML = isEdit ? '<span style="font-style:normal;">✓</span> Save Changes' : '<span style="font-style:normal;">📅</span> Save Appointment';
+}
+
+function minutesFromTime(t) {
+  if (!t) return null;
+  var p = String(t).split(':');
+  if (p.length < 2) return null;
+  return (parseInt(p[0],10) * 60) + parseInt(p[1],10);
+}
+
+function eventStartMinutes(ev) {
+  return minutesFromTime(ev.start || time12To24(ev.time || '')) || 0;
+}
+
+function eventEndMinutes(ev) {
+  var end = minutesFromTime(ev.end || '');
+  if (end !== null) return end;
+  var start = eventStartMinutes(ev);
+  return start ? start + 30 : 0;
+}
+
+function eventsOverlap(aStart, aEnd, bStart, bEnd) {
+  if (aStart === null || aEnd === null || !bStart || !bEnd) return false;
+  if (aEnd <= aStart) aEnd = aStart + 30;
+  return aStart < bEnd && aEnd > bStart;
+}
+
+
+var _bookPickerYear = null;
+var _bookPickerMonth = null;
+
+function setBookPickerFromDate(dateStr) {
+  var d = dateStr ? new Date(dateStr + 'T12:00:00') : new Date();
+  if (isNaN(d)) d = new Date();
+  _bookPickerYear = d.getFullYear();
+  _bookPickerMonth = d.getMonth();
+  renderBookMiniCalendar();
+}
+
+function bookMiniPrev() {
+  hapticTap();
+  if (_bookPickerYear === null) setBookPickerFromDate(document.getElementById('book-date').value);
+  _bookPickerMonth--;
+  if (_bookPickerMonth < 0) { _bookPickerMonth = 11; _bookPickerYear--; }
+  renderBookMiniCalendar();
+}
+
+function bookMiniNext() {
+  hapticTap();
+  if (_bookPickerYear === null) setBookPickerFromDate(document.getElementById('book-date').value);
+  _bookPickerMonth++;
+  if (_bookPickerMonth > 11) { _bookPickerMonth = 0; _bookPickerYear++; }
+  renderBookMiniCalendar();
+}
+
+function selectBookMiniDate(ds) {
+  hapticTap();
+  document.getElementById('book-date').value = ds;
+  var picked = new Date(ds + 'T12:00:00');
+  _bookPickerYear = picked.getFullYear();
+  _bookPickerMonth = picked.getMonth();
+  renderBookMiniCalendar();
+  updateBookDayAvailability();
+}
+
+function renderBookMiniCalendar() {
+  var titleEl = document.getElementById('book-mini-title');
+  var gridEl = document.getElementById('book-mini-grid');
+  var selectedEl = document.getElementById('book-selected-date');
+  var dateInput = document.getElementById('book-date');
+  if (!titleEl || !gridEl || !dateInput) return;
+  if (_bookPickerYear === null) setBookPickerFromDate(dateInput.value);
+
+  var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  titleEl.textContent = months[_bookPickerMonth] + ' ' + _bookPickerYear;
+
+  var first = new Date(_bookPickerYear, _bookPickerMonth, 1).getDay();
+  var days = new Date(_bookPickerYear, _bookPickerMonth + 1, 0).getDate();
+  var todayStr = isoDate(new Date());
+  var selected = dateInput.value;
+  var html = '';
+
+  for (var i=0; i<first; i++) html += '<button class="book-mini-day empty" type="button" disabled></button>';
+
+  for (var d=1; d<=days; d++) {
+    var ds = _bookPickerYear + '-' + String(_bookPickerMonth + 1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+    var count = CAL_EVENTS.filter(function(e){ return e.date === ds && String(e.id) !== String(_editingEventId || ''); }).length;
+    var loadClass = count >= 6 ? ' busy-6' : count >= 3 ? ' busy-3' : count > 0 ? ' busy-1' : '';
+    var selectedClass = ds === selected ? ' selected' : '';
+    var todayClass = ds === todayStr ? ' today' : '';
+    html += '<button class="book-mini-day'+loadClass+selectedClass+todayClass+'" type="button" onclick="selectBookMiniDate(\''+ds+'\')">'
+      + '<span class="num">'+d+'</span>'
+      + (count ? '<span class="book-mini-dot"></span><span class="book-mini-load">'+count+'</span>' : '')
+      + '</button>';
+  }
+  gridEl.innerHTML = html;
+
+  if (selectedEl) {
+    if (selected) {
+      var sd = new Date(selected + 'T12:00:00');
+      selectedEl.textContent = months[sd.getMonth()] + ' ' + sd.getDate() + ', ' + sd.getFullYear();
+    } else {
+      selectedEl.textContent = 'Pick a day';
+    }
+  }
+}
+
+function updateBookDayAvailability() {
+  var dateEl = document.getElementById('book-date');
+  var listEl = document.getElementById('book-day-list');
+  var countEl = document.getElementById('book-day-count');
+  var warnEl = document.getElementById('book-conflict-warning');
+  if (!dateEl || !listEl) return;
+
+  var date = dateEl.value;
+  renderBookMiniCalendar();
+  var start = minutesFromTime((document.getElementById('book-start')||{}).value || '');
+  var end = minutesFromTime((document.getElementById('book-end')||{}).value || '');
+  if (start !== null && end === null) end = start + 30;
+
+  var events = CAL_EVENTS.filter(function(e){
+    return e.date === date && String(e.id) !== String(_editingEventId || '');
+  }).sort(function(a,b){ return eventStartMinutes(a) - eventStartMinutes(b); });
+
+  if (countEl) countEl.textContent = events.length ? events.length : 'Clear';
+
+  var hasConflict = false;
+  if (!date) {
+    listEl.innerHTML = '<div class="day-availability-empty">Pick a date to see your appointments.</div>';
+    if (warnEl) warnEl.style.display = 'none';
+    return;
+  }
+
+  if (!events.length) {
+    listEl.innerHTML = '<div class="day-availability-empty">No other appointments on this day.</div>';
+    if (warnEl) warnEl.style.display = 'none';
+    return;
+  }
+
+  listEl.innerHTML = events.map(function(e){
+    var sMin = eventStartMinutes(e);
+    var eMin = eventEndMinutes(e);
+    var conflict = eventsOverlap(start, end, sMin, eMin);
+    if (conflict) hasConflict = true;
+    var timeText = (e.time || (e.start ? fmt12(e.start) : 'No time')) + (e.end ? ' - ' + fmt12(e.end) : '');
+    return '<div class="day-availability-row" style="'+(conflict?'border-color:#fca5a5;background:#fff7f7':'')+'">'
+      + '<div class="day-availability-time">'+timeText+'</div>'
+      + '<div style="flex:1">'
+        + '<div class="day-availability-main">'+(e.title || 'Appointment')+'</div>'
+        + '<div class="day-availability-sub">'+(e.contact || e.company || e.notes || '')+'</div>'
+      + '</div>'
+    + '</div>';
+  }).join('');
+
+  if (warnEl) warnEl.style.display = hasConflict ? 'block' : 'none';
+}
+
+function openBookSheetForEvent(id) {
+  _editingEventId = id;
+  var ev = CAL_EVENTS.find(function(e){ return String(e.id) === String(id); });
+  if (!ev) { showToast('Event not found'); return; }
+  document.getElementById('book-title').value = ev.title || '';
+  document.getElementById('book-type').value = ev.type || 'call';
+  document.getElementById('book-contact').value = ev.contact || '';
+  document.getElementById('book-date').value = ev.date || new Date().toISOString().split('T')[0];
+  document.getElementById('book-start').value = ev.start || time12To24(ev.time || '');
+  document.getElementById('book-end').value = ev.end || '';
+  document.getElementById('book-notes').value = ev.notes || '';
+  setBookSheetMode(true);
+  setBookPickerFromDate(document.getElementById('book-date').value);
+  openSheet('book-sheet');
+  updateBookDayAvailability();
+}
 
 function saveBooking() {
   hapticTap();
@@ -1679,26 +1930,60 @@ function saveBooking() {
   var contact = document.getElementById('book-contact').value.trim();
   var type    = document.getElementById('book-type').value;
   var start   = document.getElementById('book-start').value;
+  var end     = document.getElementById('book-end').value;
   var notes   = document.getElementById('book-notes').value.trim();
   if (!title||!date) { showToast('Please add a title and date'); return; }
 
-  var newEv = {
-    id: Date.now(), date: date, title: title, type: type,
+  // Warn if the selected time overlaps another appointment on the same day.
+  var startMin = minutesFromTime(start);
+  var endMin = minutesFromTime(end);
+  if (startMin !== null && endMin === null) endMin = startMin + 30;
+  var conflict = CAL_EVENTS.some(function(e){
+    return e.date === date
+      && String(e.id) !== String(_editingEventId || '')
+      && eventsOverlap(startMin, endMin, eventStartMinutes(e), eventEndMinutes(e));
+  });
+  if (conflict && !confirm('This overlaps another appointment on that day. Save it anyway?')) return;
+
+  var ev = {
+    id: _editingEventId || Date.now(), date: date, title: title, type: type,
+    start: start, end: end,
     time: start ? fmt12(start) : '',
     contact: contact, notes: notes
   };
-  CAL_EVENTS.push(newEv);
-  sheetsAPI('saveCalEvent',{event:newEv},function(){});
+
+  if (_editingEventId) {
+    var idx = CAL_EVENTS.findIndex(function(e){ return String(e.id) === String(_editingEventId); });
+    if (idx >= 0) CAL_EVENTS[idx] = Object.assign({}, CAL_EVENTS[idx], ev);
+    else CAL_EVENTS.push(ev);
+  } else {
+    CAL_EVENTS.push(ev);
+  }
+
+  sheetsAPI('saveCalEvent',{event:ev},function(){});
+  calSelectedDate = date;
   if (_currentTab==='calendar') calRender();
   updateTodayFocus();
   closeSheet('book-sheet');
-  showToast('Appointment saved ✓');
+  showToast(_editingEventId ? 'Appointment updated ✓' : 'Appointment saved ✓');
+  _editingEventId = null;
+  setBookSheetMode(false);
 }
 
 function fmt12(t) {
   if (!t) return '';
   var p=t.split(':'),h=parseInt(p[0]),m=p[1];
   return (h===0?12:h>12?h-12:h)+':'+m+' '+(h<12?'AM':'PM');
+}
+
+function time12To24(t) {
+  if (!t) return '';
+  var m = String(t).trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!m) return '';
+  var h = parseInt(m[1],10), min = m[2], ap = m[3].toUpperCase();
+  if (ap === 'PM' && h < 12) h += 12;
+  if (ap === 'AM' && h === 12) h = 0;
+  return String(h).padStart(2,'0') + ':' + min;
 }
 
 // ── SHEETS / OVERLAYS ────────────────────────────────────────────────
